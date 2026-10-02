@@ -469,12 +469,23 @@ async def get_stock_data(ticker: str, limit: int = 120):
                         "dividend_yield_pct": d_info.get("yield") or c.get("dividend_yield_pct"),
                         "annualized_dps": d_info.get("dps") or c.get("annualized_dps"),
                     }
-                    decision = {
-                        "compounder_score": c.get("compounder_score"),
-                        "dca_verdict": c.get("dca_verdict"),
-                        "dca_rating": c.get("dca_rating"),
-                        "is_value_trap": c.get("is_value_trap", False),
-                    }
+                    from idx.compounder import evaluate_forensics, calculate_dca_compounder_score
+                    forensics = evaluate_forensics(c)
+                    if forensics.get("is_value_trap"):
+                        dca = calculate_dca_compounder_score(c, forensics, {})
+                        decision = {
+                            "compounder_score": dca.get("score", 10.0),
+                            "dca_verdict": dca.get("verdict", "VALUE_TRAP"),
+                            "dca_rating": dca.get("dca_rating", "🚨 HINDARI (Value Trap)"),
+                            "is_value_trap": True,
+                        }
+                    else:
+                        decision = {
+                            "compounder_score": c.get("compounder_score"),
+                            "dca_verdict": c.get("dca_verdict"),
+                            "dca_rating": c.get("dca_rating"),
+                            "is_value_trap": c.get("is_value_trap", False),
+                        }
                     break
     except Exception:
         pass
