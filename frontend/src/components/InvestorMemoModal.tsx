@@ -1,13 +1,14 @@
 import React from 'react';
 import { Printer, X, ShieldCheck, TrendingUp, Coins, Building, Award, CheckCircle } from 'lucide-react';
 import type { Company } from '../types';
-import { formatNum } from '../utils/formatters'; // Assuming a new formatter utility for numbers
+import { formatNum, formatCurrency } from '../utils/formatters'; // Assuming a new formatter utility for numbers
 
 interface InvestorMemoModalProps {
   company: Company;
   onClose: () => void;
 }
 
+// Added a comment to trigger a new deployment for debugging
 export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, onClose }) => {
   const currentPrice = company.price ?? company.previous_price ?? 0;
   const score = company.score?.total ?? 75;
