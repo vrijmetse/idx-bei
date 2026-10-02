@@ -1,18 +1,19 @@
 import React from 'react';
-import { Printer, X, ShieldCheck, TrendingUp, Coins, Building, Award, CheckCircle } from 'lucide-react';
+import { Printer, X, ShieldCheck, TrendingUp, Coins, Building, Award, CheckCircle, AlertTriangle } from 'lucide-react';
 import type { Company } from '../types';
-import { formatNum, formatCurrency } from '../utils/formatters'; // Assuming a new formatter utility for numbers
+import { formatNum, formatCurrency } from '../utils/formatters';
 
 interface InvestorMemoModalProps {
   company: Company;
   onClose: () => void;
 }
 
-// Added a comment to trigger a new deployment for debugging
 export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, onClose }) => {
   const currentPrice = company.price ?? company.previous_price ?? 0;
-  const score = company.score?.total ?? 75;
+  const score = company.compounder_score ?? company.score?.total ?? null;
   const latestFsDate = company.latest_fs_date ? new Date(company.latest_fs_date).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' }) : 'N/A';
+  const isTrapOrLoss = company.is_value_trap || (company.roe != null && company.roe < 0) || (company.npm != null && company.npm < 0);
+  const isHighQuality = (company.roe != null && company.roe >= 15) && !company.is_value_trap;
 
   const handlePrint = () => {
     window.print();
@@ -127,13 +128,13 @@ export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, o
                 marginTop: '0.5rem',
                 padding: '0.25rem 0.75rem',
                 borderRadius: '20px',
-                background: score >= 80 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.2)',
-                color: score >= 80 ? '#34d399' : '#38bdf8',
+                background: score != null && score >= 80 ? 'rgba(16, 185, 129, 0.2)' : score != null && score < 30 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(56, 189, 248, 0.2)',
+                color: score != null && score >= 80 ? '#34d399' : score != null && score < 30 ? '#ef4444' : '#38bdf8',
                 fontWeight: 700,
                 fontSize: '0.8rem',
-                border: `1px solid ${score >= 80 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(56, 189, 248, 0.4)'}`,
+                border: `1px solid ${score != null && score >= 80 ? 'rgba(16, 185, 129, 0.4)' : score != null && score < 30 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(56, 189, 248, 0.4)'}`,
               }}>
-                SMSS Score: {score} / 100
+                SMSS Score: {score != null ? `${score} / 100` : '—'}
               </div>
             </div>
           </div>
@@ -217,17 +218,34 @@ export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, o
 
           {/* Bottom Executive Verdict */}
           <div style={{
-            background: 'rgba(16, 185, 129, 0.08)',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
+            background: isTrapOrLoss ? 'rgba(239, 68, 68, 0.08)' : isHighQuality ? 'rgba(16, 185, 129, 0.08)' : 'rgba(56, 189, 248, 0.08)',
+            border: `1px solid ${isTrapOrLoss ? 'rgba(239, 68, 68, 0.4)' : isHighQuality ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
             borderRadius: '12px',
             padding: '1.25rem',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 700, marginBottom: '0.35rem' }}>
-              <CheckCircle size={18} />
-              <span>Executive Investment Verdict</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: isTrapOrLoss ? '#ef4444' : isHighQuality ? '#10b981' : '#38bdf8', fontWeight: 700, marginBottom: '0.35rem' }}>
+              {isTrapOrLoss ? <AlertTriangle size={18} /> : <CheckCircle size={18} />}
+              <span>{isTrapOrLoss ? 'Forensic & Risk Warning' : 'Executive Investment Verdict'}</span>
             </div>
             <p style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.5, color: '#e2e8f0' }}>
-              <strong>{company.code}</strong> exhibits strong fundamental durability with an ROE of {formatNum(company.roe, 2, '18')}% and sustained institutional buying interest. The company passes all Audit Risk and Dilution Watch guardrails with zero dilution warnings. Recommended as a core quality allocation for medium to long-term wealth compounding.
+              {company.ai_thesis ? (
+                company.ai_thesis
+              ) : isTrapOrLoss ? (
+                <span>
+                  <strong>{company.code}</strong> exhibits heightened financial or valuation risk.
+                  {company.roe != null && company.roe < 0 ? ` The company recorded an unprofitable ROE of ${company.roe.toFixed(2)}%.` : ''}
+                  {company.forensic_reasons && company.forensic_reasons.length > 0 ? ` Flagged concerns: ${company.forensic_reasons.join('; ')}.` : ''}
+                  {' '}Not recommended for long-term compounder portfolios until sustained profitability and balance sheet solvency are demonstrated.
+                </span>
+              ) : isHighQuality ? (
+                <span>
+                  <strong>{company.code}</strong> demonstrates strong capital compounding capability with an ROE of {company.roe != null ? `${company.roe.toFixed(2)}%` : 'elevated'} and stable financial health. Suitable for disciplined dollar-cost averaging (DCA) and core long-term portfolio allocation.
+                </span>
+              ) : (
+                <span>
+                  <strong>{company.code}</strong> exhibits moderate fundamentals with an ROE of {company.roe != null ? `${company.roe.toFixed(2)}%` : '—'} and PBV of {company.pbv ?? company.price_bv != null ? `${(company.pbv ?? company.price_bv)!.toFixed(2)}x` : '—'}. Position sizing should be managed conservatively pending further margin expansion or institutional accumulation.
+                </span>
+              )}
             </p>
           </div>
 
