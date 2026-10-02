@@ -147,7 +147,15 @@ async def get_dashboard_data():
     """Return unified dashboard dataset containing companies with prices, super-insiders, and conglomerates."""
     alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
     if os.path.exists(alpha_file):
-        return load_json(alpha_file)
+        data = load_json(alpha_file)
+        from idx.compounder import evaluate_forensics
+        for c in data.get("companies", []):
+            forensics = evaluate_forensics(c)
+            if forensics.get("is_value_trap"):
+                c["is_value_trap"] = True
+                if "UNPROFITABLE_NET_LOSS" in forensics.get("flags", []):
+                    c["dca_rating"] = "🚨 HINDARI (Rugi Bersih)"
+        return data
     return {"companies": [], "super_insiders": [], "conglomerates": []}
 
 
@@ -157,7 +165,15 @@ async def get_companies():
     alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
     if os.path.exists(alpha_file):
         data = load_json(alpha_file)
-        return data.get("companies", [])
+        from idx.compounder import evaluate_forensics
+        companies = data.get("companies", [])
+        for c in companies:
+            forensics = evaluate_forensics(c)
+            if forensics.get("is_value_trap"):
+                c["is_value_trap"] = True
+                if "UNPROFITABLE_NET_LOSS" in forensics.get("flags", []):
+                    c["dca_rating"] = "🚨 HINDARI (Rugi Bersih)"
+        return companies
     return []
 
 
@@ -397,7 +413,8 @@ async def get_stock_blocks(ticker: str):
             )
             rem_lots -= trade_lots
             trade_val = trade_lots * 100 * vwap_price
-            is_whale = trade_val >= 500_000_000 or trade_lots >= 2000
+            # True institutional block trade must be >= Rp 1.0 Miliar
+            is_whale = trade_val >= 1_000_000_000
 
             smart_b = active_smart[i % len(active_smart)]
             retail_s = active_retail[i % len(active_retail)]
@@ -406,22 +423,22 @@ async def get_stock_blocks(ticker: str):
                 if i % 3 != 0:
                     b_code, b_name, b_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
                     s_code, s_name, s_type = retail_s["code"], retail_s["name"], "RETAIL"
-                    trade_type = "WHALE_ACCUMULATION"
+                    trade_type = "WHALE_ACCUMULATION" if is_whale else "RETAIL_FLOW"
                 else:
                     alt_smart = active_smart[(i + 1) % len(active_smart)]
                     b_code, b_name, b_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
                     s_code, s_name, s_type = alt_smart["code"], alt_smart["name"], "INSTITUTIONAL"
-                    trade_type = "INSTITUTIONAL_CROSSING"
+                    trade_type = "INSTITUTIONAL_CROSSING" if is_whale else "BLOCK_PASS"
             else:
                 if i % 3 != 0:
                     b_code, b_name, b_type = retail_s["code"], retail_s["name"], "RETAIL"
                     s_code, s_name, s_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
-                    trade_type = "WHALE_DUMP"
+                    trade_type = "WHALE_DUMP" if is_whale else "RETAIL_DISTRIBUTION"
                 else:
                     alt_smart = active_smart[(i + 1) % len(active_smart)]
                     b_code, b_name, b_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
                     s_code, s_name, s_type = alt_smart["code"], alt_smart["name"], "INSTITUTIONAL"
-                    trade_type = "INSTITUTIONAL_CROSSING"
+                    trade_type = "INSTITUTIONAL_CROSSING" if is_whale else "BLOCK_PASS"
 
             blocks.append(
                 {

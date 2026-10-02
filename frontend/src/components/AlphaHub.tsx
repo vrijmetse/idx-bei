@@ -11,7 +11,12 @@ import {
   Zap, 
   RotateCw,
   Sparkles,
-  Award
+  Award,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import type { Company, StealthAnomaly, DividendOpportunity } from '../types';
 import { fetchStealthAccumulation, fetchDividendScreen, fetchDailyBriefing, fetchBrokerFlow } from '../services/api';
@@ -41,6 +46,12 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
   const [briefingOpen, setBriefingOpen] = useState<boolean>(false);
   const [briefingData, setBriefingData] = useState<any>(null);
   const [, setBriefingLoading] = useState<boolean>(false);
+
+  // Pagination & Sorting state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [sortKey, setSortKey] = useState<string>('score');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const handleOpenBriefing = async () => {
     setBriefingOpen(true);
@@ -256,14 +267,63 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
       return true;
     });
 
-    if (activeCategory === 'danger') {
-      list.sort((a: Company, b: Company) => (a.compounder_score ?? 10) - (b.compounder_score ?? 10));
-    } else if (activeCategory === 'dca_prime') {
-      list.sort((a: Company, b: Company) => (b.compounder_score ?? 0) - (a.compounder_score ?? 0));
-    }
+    list.sort((a: Company, b: Company) => {
+      let valA: any = 0;
+      let valB: any = 0;
 
-    return list.slice(0, 100);
-  }, [companies, activeCategory, searchQuery, stealthAnomalies, dividendOpps]);
+      switch (sortKey) {
+        case 'code':
+          return sortDir === 'asc' ? a.code.localeCompare(b.code) : b.code.localeCompare(a.code);
+        case 'price':
+          valA = a.price ?? a.previous_price ?? 0;
+          valB = b.price ?? b.previous_price ?? 0;
+          break;
+        case 'roe':
+          valA = a.roe ?? -999;
+          valB = b.roe ?? -999;
+          break;
+        case 'pbv':
+          valA = a.pbv ?? a.price_bv ?? 999;
+          valB = b.pbv ?? b.price_bv ?? 999;
+          break;
+        case 'yield':
+          valA = a.yield ?? 0;
+          valB = b.yield ?? 0;
+          break;
+        case 'score':
+        default:
+          if (activeCategory === 'danger') {
+            valA = a.compounder_score ?? 10;
+            valB = b.compounder_score ?? 10;
+            return sortDir === 'asc' ? valB - valA : valA - valB;
+          }
+          valA = a.compounder_score ?? 0;
+          valB = b.compounder_score ?? 0;
+          break;
+      }
+
+      return sortDir === 'asc' ? valA - valB : valB - valA;
+    });
+
+    return list;
+  }, [companies, activeCategory, searchQuery, stealthAnomalies, dividendOpps, sortKey, sortDir]);
+
+  const totalRows = filteredList.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const paginatedList = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredList.slice(start, start + pageSize);
+  }, [filteredList, currentPage, pageSize]);
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'code' ? 'asc' : 'desc');
+    }
+    setCurrentPage(1);
+  };
 
   return (
     <div className="alpha-hub" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -877,7 +937,10 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveCategory(tab.id as any)}
+                onClick={() => {
+                  setActiveCategory(tab.id as any);
+                  setCurrentPage(1);
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -907,7 +970,10 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
             type="text"
             placeholder="Search code or sector..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
             style={{
               width: '100%',
               padding: '0.5rem 0.75rem 0.5rem 2rem',
@@ -934,17 +1000,65 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
           <thead>
             <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', color: 'var(--text-secondary)', textAlign: 'left' }}>
               <th style={{ padding: '0.75rem 0.5rem', width: '40px' }}>Star</th>
-              <th style={{ padding: '0.75rem 0.5rem' }}>Stock</th>
-              <th style={{ padding: '0.75rem 0.5rem' }}>Price & Change</th>
-              <th style={{ padding: '0.75rem 0.5rem' }}>Plain-English Verdict</th>
-              <th style={{ padding: '0.75rem 0.5rem' }}>ROE %</th>
-              <th style={{ padding: '0.75rem 0.5rem' }}>PBV</th>
-              <th style={{ padding: '0.75rem 0.5rem' }}>Yield</th>
+              <th
+                onClick={() => handleSort('code')}
+                style={{ padding: '0.75rem 0.5rem', cursor: 'pointer', userSelect: 'none' }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span>Stock</span>
+                  {sortKey === 'code' ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('price')}
+                style={{ padding: '0.75rem 0.5rem', cursor: 'pointer', userSelect: 'none' }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span>Price & Change</span>
+                  {sortKey === 'price' ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('score')}
+                style={{ padding: '0.75rem 0.5rem', cursor: 'pointer', userSelect: 'none' }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span>Plain-English Verdict</span>
+                  {sortKey === 'score' ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('roe')}
+                style={{ padding: '0.75rem 0.5rem', cursor: 'pointer', userSelect: 'none' }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span>ROE %</span>
+                  {sortKey === 'roe' ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('pbv')}
+                style={{ padding: '0.75rem 0.5rem', cursor: 'pointer', userSelect: 'none' }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span>PBV</span>
+                  {sortKey === 'pbv' ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('yield')}
+                style={{ padding: '0.75rem 0.5rem', cursor: 'pointer', userSelect: 'none' }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span>Yield</span>
+                  {sortKey === 'yield' ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
+                </div>
+              </th>
               <th style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>Action</th>
             </tr>
           </thead>
           <tbody>
-            {filteredList.map((c) => {
+            {paginatedList.map((c) => {
               const divMatch = dividendOpps.find((d) => d.StockCode === c.code);
               const stealthMatch = stealthAnomalies.find((a) => a.StockCode === c.code);
               const price = c.price ?? c.previous_price ?? divMatch?.Price ?? 0;
@@ -1109,6 +1223,93 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
             })}
           </tbody>
         </table>
+
+        {/* Pagination & Rows Info */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginTop: '1.25rem',
+          paddingTop: '1rem',
+          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          fontSize: '0.85rem',
+          color: '#94a3b8',
+        }}>
+          <div>
+            Showing <strong style={{ color: '#f8fafc' }}>{totalRows === 0 ? 0 : (currentPage - 1) * pageSize + 1}</strong> to{' '}
+            <strong style={{ color: '#f8fafc' }}>{Math.min(currentPage * pageSize, totalRows)}</strong> of{' '}
+            <strong style={{ color: '#38bdf8' }}>{totalRows}</strong> companies
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                style={{
+                  background: 'rgba(0, 0, 0, 0.4)',
+                  color: '#f8fafc',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '6px',
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={1000}>All</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                style={{
+                  background: currentPage === 1 ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.1)',
+                  color: currentPage === 1 ? '#64748b' : '#f8fafc',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '6px',
+                  padding: '0.35rem 0.6rem',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              <span style={{ padding: '0 0.5rem', fontWeight: 600, color: '#f8fafc' }}>
+                Page {currentPage} of {totalPages}
+              </span>
+
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+                style={{
+                  background: currentPage >= totalPages ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.1)',
+                  color: currentPage >= totalPages ? '#64748b' : '#f8fafc',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '6px',
+                  padding: '0.35rem 0.6rem',
+                  cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Daily Market-Close Executive Briefing Modal */}
