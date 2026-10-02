@@ -226,7 +226,7 @@ class TestAPI(unittest.TestCase):
             self.assertIn("non_regular_value_rp", data)
             self.assertIn("smart_accumulation_ratio", data)
         # Non-existent ticker 404
-        resp_404 = self.client.get("/api/stock/INVALID_ZZZZ/blocks")
+        resp_404 = self.client.get("/api/stock/INVALIDZZ/blocks")
         self.assertEqual(resp_404.status_code, 404)
 
     def test_stock_blocks_bumi_pasar_nego(self):

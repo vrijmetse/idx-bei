@@ -60,6 +60,7 @@ export interface BackfillTier {
   name: string;
   priority: string;
   description: string;
+  coverage_pct?: number;
   target_range: { start: string; end: string };
   trading_days_to_fetch: number;
   estimated_payload_mb: number;

@@ -15,6 +15,152 @@ from idx.scrapers.historical import _trading_days
 
 log = get_logger("idx.ingestion")
 
+# Official IDX Public Holidays / Non-trading Weekdays (2021-2026)
+KNOWN_IDX_HOLIDAYS_2021 = {
+    "2021-01-01": "Tahun Baru 2021 Masehi",
+    "2021-02-12": "Tahun Baru Imlek 2572",
+    "2021-03-11": "Isra Mi'raj Nabi Muhammad SAW",
+    "2021-03-14": "Hari Suci Nyepi Saka 1943",
+    "2021-04-02": "Wafat Isa Al Masih",
+    "2021-05-01": "Hari Buruh Internasional",
+    "2021-05-12": "Cuti Bersama Idul Fitri 1442 H",
+    "2021-05-13": "Kenaikan Isa Al Masih & Hari Raya Idul Fitri 1442 H",
+    "2021-05-14": "Hari Raya Idul Fitri 1442 H",
+    "2021-05-17": "Cuti Bersama Idul Fitri",
+    "2021-05-18": "Cuti Bersama Idul Fitri",
+    "2021-05-19": "Cuti Bersama Idul Fitri",
+    "2021-05-26": "Hari Raya Waisak 2565 BE",
+    "2021-06-01": "Hari Lahir Pancasila",
+    "2021-07-20": "Hari Raya Idul Adha 1442 H",
+    "2021-08-10": "Tahun Baru Islam 1443 H",
+    "2021-08-11": "Libur Tahun Baru Islam (Penggeseran Libur)",
+    "2021-08-17": "Hari Kemerdekaan RI Ke-76",
+    "2021-10-19": "Maulid Nabi Muhammad SAW",
+    "2021-10-20": "Libur Maulid Nabi Muhammad SAW (Penggeseran Libur)",
+    "2021-12-24": "Cuti Bersama Hari Raya Natal",
+    "2021-12-25": "Hari Raya Natal",
+    "2021-12-31": "Libur Akhir Tahun BEI",
+}
+
+KNOWN_IDX_HOLIDAYS_2022 = {
+    "2022-01-01": "Tahun Baru 2022 Masehi",
+    "2022-02-01": "Tahun Baru Imlek 2573",
+    "2022-02-28": "Isra Mi'raj Nabi Muhammad SAW",
+    "2022-03-03": "Hari Suci Nyepi Saka 1944",
+    "2022-04-15": "Wafat Isa Al Masih",
+    "2022-04-29": "Cuti Bersama Idul Fitri 1443 H",
+    "2022-05-01": "Hari Buruh Internasional",
+    "2022-05-02": "Hari Raya Idul Fitri 1443 H",
+    "2022-05-03": "Hari Raya Idul Fitri 1443 H",
+    "2022-05-04": "Cuti Bersama Idul Fitri",
+    "2022-05-05": "Cuti Bersama Idul Fitri",
+    "2022-05-06": "Cuti Bersama Idul Fitri",
+    "2022-05-16": "Hari Raya Waisak 2566 BE",
+    "2022-05-26": "Kenaikan Isa Al Masih",
+    "2022-06-01": "Hari Lahir Pancasila",
+    "2022-07-09": "Hari Raya Idul Adha 1443 H",
+    "2022-07-30": "Tahun Baru Islam 1444 H",
+    "2022-08-17": "Hari Kemerdekaan RI Ke-77",
+    "2022-10-08": "Maulid Nabi Muhammad SAW",
+    "2022-12-25": "Hari Raya Natal",
+    "2022-12-30": "Libur Akhir Tahun BEI",
+}
+
+KNOWN_IDX_HOLIDAYS_2023 = {
+    "2023-01-01": "Tahun Baru 2023 Masehi",
+    "2023-01-22": "Tahun Baru Imlek 2574",
+    "2023-01-23": "Cuti Bersama Tahun Baru Imlek",
+    "2023-02-18": "Isra Mi'raj Nabi Muhammad SAW",
+    "2023-03-22": "Hari Suci Nyepi Saka 1945",
+    "2023-03-23": "Cuti Bersama Hari Suci Nyepi",
+    "2023-04-07": "Wafat Isa Al Masih",
+    "2023-04-19": "Cuti Bersama Idul Fitri 1444 H",
+    "2023-04-20": "Cuti Bersama Idul Fitri 1444 H",
+    "2023-04-21": "Cuti Bersama Idul Fitri 1444 H",
+    "2023-04-22": "Hari Raya Idul Fitri 1444 H",
+    "2023-04-23": "Hari Raya Idul Fitri 1444 H",
+    "2023-04-24": "Cuti Bersama Idul Fitri 1444 H",
+    "2023-04-25": "Cuti Bersama Idul Fitri 1444 H",
+    "2023-05-01": "Hari Buruh Internasional",
+    "2023-05-18": "Kenaikan Isa Al Masih",
+    "2023-06-01": "Hari Lahir Pancasila",
+    "2023-06-02": "Cuti Bersama Hari Raya Waisak",
+    "2023-06-04": "Hari Raya Waisak 2567 BE",
+    "2023-06-28": "Cuti Bersama Idul Adha 1444 H",
+    "2023-06-29": "Hari Raya Idul Adha 1444 H",
+    "2023-06-30": "Cuti Bersama Idul Adha",
+    "2023-07-19": "Tahun Baru Islam 1445 H",
+    "2023-08-17": "Hari Kemerdekaan RI Ke-78",
+    "2023-09-28": "Maulid Nabi Muhammad SAW",
+    "2023-12-25": "Hari Raya Natal",
+    "2023-12-26": "Cuti Bersama Hari Raya Natal",
+    "2023-12-29": "Hari Libur Bursa Efek Indonesia",
+}
+
+KNOWN_IDX_HOLIDAYS_2024 = {
+    "2024-01-01": "Tahun Baru 2024 Masehi",
+    "2024-02-08": "Isra Mi'raj Nabi Muhammad SAW",
+    "2024-02-09": "Cuti Bersama Tahun Baru Imlek 2575 Kongzili",
+    "2024-02-14": "Pemilihan Umum 2024",
+    "2024-03-11": "Hari Suci Nyepi Tahun Baru Saka 1946",
+    "2024-03-12": "Cuti Bersama Hari Suci Nyepi",
+    "2024-03-29": "Wafat Isa Al Masih",
+    "2024-03-31": "Hari Paskah",
+    "2024-04-08": "Cuti Bersama Idul Fitri 1445 H",
+    "2024-04-09": "Cuti Bersama Idul Fitri 1445 H",
+    "2024-04-10": "Hari Raya Idul Fitri 1445 H",
+    "2024-04-11": "Hari Raya Idul Fitri 1445 H",
+    "2024-04-12": "Cuti Bersama Idul Fitri 1445 H",
+    "2024-04-15": "Cuti Bersama Idul Fitri 1445 H",
+    "2024-05-01": "Hari Buruh Internasional",
+    "2024-05-09": "Kenaikan Isa Al Masih",
+    "2024-05-10": "Cuti Bersama Kenaikan Isa Al Masih",
+    "2024-05-23": "Hari Raya Waisak 2568 BE",
+    "2024-05-24": "Cuti Bersama Hari Raya Waisak",
+    "2024-06-01": "Hari Lahir Pancasila",
+    "2024-06-17": "Hari Raya Idul Adha 1445 H",
+    "2024-06-18": "Cuti Bersama Idul Adha",
+    "2024-07-07": "Tahun Baru Islam 1446 H",
+    "2024-08-17": "Hari Kemerdekaan RI Ke-79",
+    "2024-09-16": "Maulid Nabi Muhammad SAW",
+    "2024-11-27": "Libur Pilkada Serentak 2024",
+    "2024-12-25": "Hari Raya Natal",
+    "2024-12-26": "Cuti Bersama Hari Raya Natal",
+    "2024-12-31": "Libur Akhir Tahun BEI",
+}
+
+# Official IDX Public Holidays / Non-trading Weekdays
+KNOWN_IDX_HOLIDAYS_2025 = {
+    "2025-01-01": "Tahun Baru 2025 Masehi",
+    "2025-01-27": "Isra Mi'raj Nabi Muhammad SAW",
+    "2025-01-28": "Cuti Bersama Tahun Baru Imlek 2576",
+    "2025-01-29": "Tahun Baru Imlek 2576 Kongzili",
+    "2025-03-28": "Cuti Bersama Hari Suci Nyepi",
+    "2025-03-29": "Hari Suci Nyepi Saka 1947",
+    "2025-03-31": "Hari Raya Idul Fitri 1446 H",
+    "2025-04-01": "Hari Raya Idul Fitri 1446 H",
+    "2025-04-02": "Cuti Bersama Hari Raya Idul Fitri 1446 H",
+    "2025-04-03": "Cuti Bersama Hari Raya Idul Fitri 1446 H",
+    "2025-04-04": "Cuti Bersama Hari Raya Idul Fitri 1446 H",
+    "2025-04-07": "Cuti Bersama Hari Raya Idul Fitri 1446 H",
+    "2025-04-18": "Wafat Isa Al Masih (Good Friday)",
+    "2025-05-01": "Hari Buruh Internasional",
+    "2025-05-12": "Hari Raya Waisak 2569 BE",
+    "2025-05-13": "Cuti Bersama Hari Raya Waisak",
+    "2025-05-29": "Kenaikan Isa Al Masih",
+    "2025-05-30": "Cuti Bersama Kenaikan Isa Al Masih",
+    "2025-06-01": "Hari Lahir Pancasila",
+    "2025-06-06": "Hari Raya Idul Adha 1446 H",
+    "2025-06-09": "Cuti Bersama Hari Raya Idul Adha",
+    "2025-06-27": "Tahun Baru Islam 1447 H",
+    "2025-08-17": "Hari Kemerdekaan RI Ke-80",
+    "2025-08-18": "Cuti Bersama Hari Kemerdekaan RI",
+    "2025-09-05": "Maulid Nabi Muhammad SAW",
+    "2025-12-25": "Hari Raya Natal",
+    "2025-12-26": "Cuti Bersama Hari Raya Natal",
+    "2025-12-31": "Libur Akhir Tahun Bursa Efek Indonesia",
+}
+
 # Official IDX Public Holidays / Non-trading Weekdays for 2026
 KNOWN_IDX_HOLIDAYS_2026 = {
     "2026-01-01": "Tahun Baru 2026 Masehi",
@@ -44,10 +190,15 @@ KNOWN_IDX_HOLIDAYS_2026 = {
 def get_idx_holidays(year: int | None = None, base_dir: str | None = None) -> dict[str, str]:
     """Retrieves IDX public holidays and non-trading days with local cache support.
 
-    Merges static 2026 holiday calendar with any custom or cached entries in data/idx_holidays.json.
+    Merges static 2021-2026 holiday calendars with any custom or cached entries in data/idx_holidays.json.
     """
     root = base_dir or DATA_DIR
-    holidays = dict(KNOWN_IDX_HOLIDAYS_2026)
+    holidays = dict(KNOWN_IDX_HOLIDAYS_2021)
+    holidays.update(KNOWN_IDX_HOLIDAYS_2022)
+    holidays.update(KNOWN_IDX_HOLIDAYS_2023)
+    holidays.update(KNOWN_IDX_HOLIDAYS_2024)
+    holidays.update(KNOWN_IDX_HOLIDAYS_2025)
+    holidays.update(KNOWN_IDX_HOLIDAYS_2026)
     cache_path = os.path.join(root, "idx_holidays.json")
     if os.path.exists(cache_path):
         try:
@@ -279,6 +430,41 @@ def calculate_backfill_recommendations(
 
     missing_recent = gap_info["true_missing_trading_days"]
     has_gaps = len(missing_recent) > 0
+    coverage_2026 = gap_info["coverage_percentage"]
+
+    # Inspect historical tiers dynamically against existing partition dates
+    gap_2025 = detect_timeseries_gaps(
+        dataset="stock_summary",
+        start_date="2025-01-01",
+        end_date="2025-12-31",
+        base_dir=base_dir,
+    )
+    missing_2025 = gap_2025["true_missing_trading_days"]
+    t2_missing_count = len(missing_2025)
+    t2_coverage = gap_2025["coverage_percentage"]
+    t2_completed = t2_missing_count == 0
+
+    gap_t3 = detect_timeseries_gaps(
+        dataset="stock_summary",
+        start_date="2023-01-01",
+        end_date="2024-12-31",
+        base_dir=base_dir,
+    )
+    missing_t3 = gap_t3["true_missing_trading_days"]
+    t3_missing_count = len(missing_t3)
+    t3_coverage = gap_t3["coverage_percentage"]
+    t3_completed = t3_missing_count == 0
+
+    gap_t4 = detect_timeseries_gaps(
+        dataset="stock_summary",
+        start_date="2021-01-01",
+        end_date="2022-12-31",
+        base_dir=base_dir,
+    )
+    missing_t4 = gap_t4["true_missing_trading_days"]
+    t4_missing_count = len(missing_t4)
+    t4_coverage = gap_t4["coverage_percentage"]
+    t4_completed = t4_missing_count == 0
 
     tiers = [
         {
@@ -286,6 +472,7 @@ def calculate_backfill_recommendations(
             "id": "tier_1_immediate_gap_repair",
             "name": "2026 YTD Gap Repair & Latest Market Close",
             "priority": "HIGH (CRITICAL)" if has_gaps else "COMPLETED (100% UP TO DATE)",
+            "coverage_pct": coverage_2026,
             "description": (
                 f"Fills {len(missing_recent)} un-ingested 2026 trading sessions."
                 if has_gaps
@@ -316,15 +503,20 @@ def calculate_backfill_recommendations(
             "tier": 2,
             "id": "tier_2_one_year_baseline",
             "name": "1-Year Baseline Historical Backfill (2025 Full Year)",
-            "priority": "RECOMMENDED (BEST VALUE)",
-            "description": "Ingests full calendar year 2025 data. This is the optimal quant baseline for medium-term strategies without network strain.",
+            "priority": "COMPLETED (100% UP TO DATE)" if t2_completed else "RECOMMENDED (BEST VALUE)",
+            "coverage_pct": t2_coverage,
+            "description": (
+                f"Full calendar year 2025 data is fully ingested ({gap_2025['ingested_days']} trading sessions, {t2_coverage}% coverage)."
+                if t2_completed
+                else f"Ingests full calendar year 2025 data ({t2_missing_count} sessions to fetch). This is the optimal quant baseline."
+            ),
             "target_range": {
-                "start": "2025-01-02",
-                "end": "2025-12-30",
+                "start": missing_2025[0] if not t2_completed and missing_2025 else "2025-01-02",
+                "end": missing_2025[-1] if not t2_completed and missing_2025 else "2025-12-30",
             },
-            "trading_days_to_fetch": 246,
-            "estimated_payload_mb": 110.0,
-            "estimated_runtime_seconds_c8": 210,  # ~3.5 minutes at concurrency 8
+            "trading_days_to_fetch": 0 if t2_completed else t2_missing_count,
+            "estimated_payload_mb": 0.0 if t2_completed else round(t2_missing_count * 0.45, 1),
+            "estimated_runtime_seconds_c8": 0 if t2_completed else max(5, int(t2_missing_count * 1.5)),
             "unlocked_capabilities": [
                 "200-day Simple & Exponential Moving Averages (SMA-200 / EMA-200)",
                 "Full 52-week High/Low price channel breakouts",
@@ -341,15 +533,20 @@ def calculate_backfill_recommendations(
             "tier": 3,
             "id": "tier_3_three_year_multicycle",
             "name": "3-Year Multi-Cycle Strategy Simulator Dataset (2023–2024)",
-            "priority": "HIGH VALUE FOR BACKTESTING",
-            "description": "Extends history across the 2023–2024 monetary tightening and global commodity shifts, providing statistical significance.",
+            "priority": "COMPLETED (100% UP TO DATE)" if t3_completed else "HIGH VALUE FOR BACKTESTING",
+            "coverage_pct": t3_coverage,
+            "description": (
+                f"2023–2024 dataset is fully ingested ({gap_t3['ingested_days']} trading sessions, {t3_coverage}% coverage)."
+                if t3_completed
+                else f"Extends history across 2023–2024 monetary tightening ({t3_missing_count} sessions to fetch)."
+            ),
             "target_range": {
-                "start": "2023-01-02",
-                "end": "2024-12-30",
+                "start": missing_t3[0] if not t3_completed and missing_t3 else "2023-01-02",
+                "end": missing_t3[-1] if not t3_completed and missing_t3 else "2024-12-30",
             },
-            "trading_days_to_fetch": 494,
-            "estimated_payload_mb": 220.0,
-            "estimated_runtime_seconds_c8": 420,  # ~7 minutes
+            "trading_days_to_fetch": 0 if t3_completed else t3_missing_count,
+            "estimated_payload_mb": 0.0 if t3_completed else round(t3_missing_count * 0.45, 1),
+            "estimated_runtime_seconds_c8": 0 if t3_completed else max(5, int(t3_missing_count * 1.5)),
             "unlocked_capabilities": [
                 "Statistically rigorous Sharpe and Sortino ratios (>500 trades)",
                 "Cross-regime validation: Bull (2023 H2), Sideways (2024 H1), and Volatility regimes",
@@ -366,15 +563,20 @@ def calculate_backfill_recommendations(
             "tier": 4,
             "id": "tier_4_five_year_macro",
             "name": "5-Year Deep Macro History (2021–2022)",
-            "priority": "OPTIONAL / RESEARCH ONLY",
-            "description": "Complete post-COVID economic recovery cycle and long-term dividend compounder verification.",
+            "priority": "COMPLETED (100% UP TO DATE)" if t4_completed else "OPTIONAL / RESEARCH ONLY",
+            "coverage_pct": t4_coverage,
+            "description": (
+                f"2021–2022 macro dataset is fully ingested ({gap_t4['ingested_days']} trading sessions, {t4_coverage}% coverage)."
+                if t4_completed
+                else f"Complete post-COVID economic recovery cycle ({t4_missing_count} sessions to fetch)."
+            ),
             "target_range": {
-                "start": "2021-01-04",
-                "end": "2022-12-30",
+                "start": missing_t4[0] if not t4_completed and missing_t4 else "2021-01-04",
+                "end": missing_t4[-1] if not t4_completed and missing_t4 else "2022-12-30",
             },
-            "trading_days_to_fetch": 498,
-            "estimated_payload_mb": 215.0,
-            "estimated_runtime_seconds_c8": 430,
+            "trading_days_to_fetch": 0 if t4_completed else t4_missing_count,
+            "estimated_payload_mb": 0.0 if t4_completed else round(t4_missing_count * 0.45, 1),
+            "estimated_runtime_seconds_c8": 0 if t4_completed else max(5, int(t4_missing_count * 1.5)),
             "unlocked_capabilities": [
                 "5-year dividend CAGR and dividend trap historical resilience",
                 "Long-term UBO and conglomerate restructuring tracking",
@@ -401,7 +603,11 @@ def calculate_backfill_recommendations(
             "recommended_action": (
                 "Backfill Tier 1 (immediate 2026 gaps) first, followed by Tier 2 (2025 1-Year Baseline) for 200-day moving averages and full backtesting power."
                 if has_gaps
-                else "2026 YTD has zero gaps! Proceed to Tier 2 (2025 1-Year Baseline) to unlock 200-day moving averages (SMA-200 / EMA-200) and full 52-week channels."
+                else (
+                    "2026 YTD and 2025 Baseline are fully ingested with 100% coverage! Historical dataset is ready for 200-day moving averages and full backtesting."
+                    if t2_completed
+                    else "2026 YTD has zero gaps! Proceed to Tier 2 (2025 1-Year Baseline) to unlock 200-day moving averages (SMA-200 / EMA-200) and full 52-week channels."
+                )
             ),
         },
         "tiers": tiers,

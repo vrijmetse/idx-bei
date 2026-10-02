@@ -631,8 +631,9 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.75rem' }}>
           {recs.tiers.map((tier) => {
             const isSelected = selectedTier === tier.tier;
-            const isRecommended = tier.tier === 2;
-            const isCritical = tier.tier === 1;
+            const isCompleted = tier.trading_days_to_fetch === 0;
+            const isRecommended = tier.tier === 2 && !isCompleted;
+            const isCritical = tier.tier === 1 && !isCompleted;
 
             return (
               <div
@@ -643,9 +644,13 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
                   borderRadius: '12px',
                   background: isSelected
                     ? 'linear-gradient(135deg, rgba(2, 132, 199, 0.2) 0%, rgba(56, 189, 248, 0.1) 100%)'
+                    : isCompleted
+                    ? 'rgba(34, 197, 94, 0.03)'
                     : 'rgba(255, 255, 255, 0.02)',
                   border: isSelected
                     ? '2px solid #38bdf8'
+                    : isCompleted
+                    ? '1px solid rgba(34, 197, 94, 0.3)'
                     : isRecommended
                     ? '1px solid rgba(56, 189, 248, 0.4)'
                     : '1px solid rgba(255, 255, 255, 0.08)',
@@ -654,6 +659,25 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
                   position: 'relative',
                 }}
               >
+                {isCompleted && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-10px',
+                      right: '12px',
+                      background: 'linear-gradient(135deg, #15803d, #22c55e)',
+                      color: '#fff',
+                      fontSize: '0.65rem',
+                      fontWeight: 800,
+                      padding: '0.15rem 0.5rem',
+                      borderRadius: '10px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}
+                  >
+                    ✓ Ingested
+                  </span>
+                )}
                 {isRecommended && (
                   <span
                     style={{
@@ -693,14 +717,14 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
                 )}
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: isSelected ? '#38bdf8' : '#94a3b8' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: isSelected ? '#38bdf8' : isCompleted ? '#4ade80' : '#94a3b8' }}>
                     TIER {tier.tier}
                   </span>
                   <span
                     style={{
                       fontSize: '0.7rem',
                       fontWeight: 700,
-                      color: isCritical ? '#f87171' : isRecommended ? '#38bdf8' : '#a855f7',
+                      color: isCompleted ? '#4ade80' : isCritical ? '#f87171' : isRecommended ? '#38bdf8' : '#a855f7',
                     }}
                   >
                     {tier.priority.split(' ')[0]}
@@ -717,17 +741,27 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '0.75rem', color: '#94a3b8' }}>
                   <div>
-                    <span style={{ display: 'block', color: 'var(--text-secondary)' }}>Days</span>
-                    <strong style={{ color: '#f8fafc', fontSize: '0.9rem' }}>{tier.trading_days_to_fetch}</strong>
+                    <span style={{ display: 'block', color: 'var(--text-secondary)' }}>
+                      {isCompleted ? 'Coverage' : 'Days'}
+                    </span>
+                    <strong style={{ color: isCompleted ? '#4ade80' : '#f8fafc', fontSize: '0.9rem' }}>
+                      {isCompleted ? `${tier.coverage_pct ?? 100}%` : tier.trading_days_to_fetch}
+                    </strong>
                   </div>
                   <div>
                     <span style={{ display: 'block', color: 'var(--text-secondary)' }}>Volume</span>
-                    <strong style={{ color: '#38bdf8', fontSize: '0.9rem' }}>~{tier.estimated_payload_mb} MB</strong>
+                    <strong style={{ color: '#38bdf8', fontSize: '0.9rem' }}>
+                      {isCompleted ? 'Ready' : `~${tier.estimated_payload_mb} MB`}
+                    </strong>
                   </div>
                   <div>
-                    <span style={{ display: 'block', color: 'var(--text-secondary)' }}>Est. Time (c=8)</span>
+                    <span style={{ display: 'block', color: 'var(--text-secondary)' }}>
+                      {isCompleted ? 'Status' : 'Est. Time (c=8)'}
+                    </span>
                     <strong style={{ color: '#4ade80', fontSize: '0.9rem' }}>
-                      {tier.estimated_runtime_seconds_c8 >= 60
+                      {isCompleted
+                        ? 'Active'
+                        : tier.estimated_runtime_seconds_c8 >= 60
                         ? `${Math.round(tier.estimated_runtime_seconds_c8 / 60)} min`
                         : `${tier.estimated_runtime_seconds_c8}s`}
                     </strong>
@@ -764,24 +798,37 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
 
             <button
               onClick={() => handleTriggerTier(activeTierObj)}
-              disabled={isTriggering || activeJob !== null}
+              disabled={isTriggering || activeJob !== null || activeTierObj.trading_days_to_fetch === 0}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
                 padding: '0.65rem 1.25rem',
                 borderRadius: '8px',
-                background: 'linear-gradient(135deg, #0284c7, #38bdf8)',
-                border: 'none',
-                color: '#fff',
+                background: activeTierObj.trading_days_to_fetch === 0
+                  ? 'rgba(34, 197, 94, 0.2)'
+                  : 'linear-gradient(135deg, #0284c7, #38bdf8)',
+                border: activeTierObj.trading_days_to_fetch === 0
+                  ? '1px solid rgba(34, 197, 94, 0.4)'
+                  : 'none',
+                color: activeTierObj.trading_days_to_fetch === 0 ? '#4ade80' : '#fff',
                 fontSize: '0.85rem',
                 fontWeight: 700,
-                cursor: isTriggering ? 'not-allowed' : 'pointer',
-                boxShadow: '0 4px 15px rgba(56, 189, 248, 0.3)',
+                cursor: (isTriggering || activeTierObj.trading_days_to_fetch === 0) ? 'not-allowed' : 'pointer',
+                boxShadow: activeTierObj.trading_days_to_fetch === 0 ? 'none' : '0 4px 15px rgba(56, 189, 248, 0.3)',
               }}
             >
-              <Play size={15} fill="#fff" />
-              <span>Trigger This Tier Now</span>
+              {activeTierObj.trading_days_to_fetch === 0 ? (
+                <>
+                  <CheckCircle2 size={16} />
+                  <span>100% Up to Date</span>
+                </>
+              ) : (
+                <>
+                  <Play size={15} fill="#fff" />
+                  <span>Trigger This Tier Now</span>
+                </>
+              )}
             </button>
           </div>
 
