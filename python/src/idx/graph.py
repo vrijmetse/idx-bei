@@ -146,15 +146,31 @@ def get_ubo_tree(ticker: str) -> dict:
         if ticker in data:
             comp = data[ticker]
             profiles = comp.get("Profiles", [{}])[0]
-            shareholders = [
-                {
-                    "name": s.get("Nama", ""),
-                    "pct": float(s.get("Persentase") or s.get("Jumlah", 0)),
-                    "pengendali": bool(s.get("Pengendali", False)),
-                }
-                for s in comp.get("PemegangSaham", [])
-                if s.get("Nama") and str(s.get("Nama")).strip() not in ("", "-")
-            ]
+            listed_shares = float(profiles.get("JumlahSaham") or profiles.get("ListedShares") or 0.0)
+
+            shareholders = []
+            for s in comp.get("PemegangSaham", []):
+                s_name = s.get("Nama")
+                if not s_name or str(s_name).strip() in ("", "-"):
+                    continue
+                persen = s.get("Persentase")
+                jumlah = float(s.get("Jumlah") or 0.0)
+                if persen is not None and float(persen) > 0:
+                    pct = float(persen)
+                elif listed_shares > 0 and jumlah > 0:
+                    pct = round((jumlah / listed_shares) * 100.0, 4)
+                elif persen is not None:
+                    pct = float(persen)
+                else:
+                    pct = 0.0
+
+                shareholders.append(
+                    {
+                        "name": str(s_name).strip(),
+                        "pct": pct,
+                        "pengendali": bool(s.get("Pengendali", False)),
+                    }
+                )
             directors = [
                 {"name": d.get("Nama", ""), "title": d.get("Jabatan", "Director")}
                 for d in comp.get("Direksi", [])

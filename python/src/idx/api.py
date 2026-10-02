@@ -267,6 +267,8 @@ async def get_dashboard_data():
                 c["is_value_trap"] = True
                 if "UNPROFITABLE_NET_LOSS" in forensics.get("flags", []):
                     c["dca_rating"] = "🚨 HINDARI (Rugi Bersih)"
+                elif "DISTORTED_LEVERAGE_ROE" in forensics.get("flags", []):
+                    c["dca_rating"] = "🚨 HINDARI (Leverage Ekstrem)"
         return data
     return {"companies": [], "super_insiders": [], "conglomerates": []}
 
@@ -305,6 +307,8 @@ async def get_companies():
                 c["is_value_trap"] = True
                 if "UNPROFITABLE_NET_LOSS" in forensics.get("flags", []):
                     c["dca_rating"] = "🚨 HINDARI (Rugi Bersih)"
+                elif "DISTORTED_LEVERAGE_ROE" in forensics.get("flags", []):
+                    c["dca_rating"] = "🚨 HINDARI (Leverage Ekstrem)"
         return companies
     return []
 

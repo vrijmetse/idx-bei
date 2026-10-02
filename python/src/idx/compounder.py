@@ -48,7 +48,7 @@ def evaluate_forensics(company: dict[str, Any]) -> dict[str, Any]:
     ebt = float(company.get("ebt") or 0.0)
     profit = float(company.get("profitPeriod") or company.get("profitAttrOwner") or 0.0)
     npm = float(company.get("npm") or 0.0)
-    der = float(company.get("deRatio") or company.get("der") or 0.0)
+    der = float(company.get("deRatio") or company.get("der") or company.get("de_ratio") or 0.0)
     equity = float(company.get("equity") or 0.0)
     opini = str(company.get("opini") or company.get("audit") or "").upper()
     sector = company.get("sector")
@@ -106,10 +106,23 @@ def evaluate_forensics(company: dict[str, Any]) -> dict[str, Any]:
         flags.append("UNPROFITABLE_NET_LOSS")
         reasons.append("Perusahaan membukukan kerugian bersih (Laba rugi operasional atau ROE negatif).")
 
+    # 7. Extreme Leverage / Equity Distortion Check
+    # When equity is paper-thin (< 10% of assets) or DER > 4.0 (for non-financials),
+    # an astronomical ROE (e.g. SAFE with DER 99.8x, ROE 2212%) is a distortion of near-insolvency, not capital efficiency.
+    assets = float(company.get("assets") or 0.0)
+    if not is_fin:
+        if der > 4.0 or (assets > 0 and 0 < equity < (assets * 0.10)):
+            if roe_val > 50.0:
+                flags.append("DISTORTED_LEVERAGE_ROE")
+                reasons.append(
+                    f"Distorsi ekuitas mendekati nol / leverage ekstrem (DER {der:.1f}x, Ekuitas Rp {equity:.2f}B). ROE {roe_val:.1f}% adalah ilusi akuntansi akibat defisiensi modal, bukan efisiensi operasional."
+                )
+
     is_value_trap = (
         "VALUE_TRAP_ONE_OFF" in flags
         or "NEGATIVE_EQUITY" in flags
         or "UNPROFITABLE_NET_LOSS" in flags
+        or "DISTORTED_LEVERAGE_ROE" in flags
     )
 
     return {
@@ -240,22 +253,30 @@ def calculate_dca_compounder_score(
     """
     if forensics.get("is_value_trap"):
         is_loss = "UNPROFITABLE_NET_LOSS" in forensics.get("flags", [])
-        thesis = (
-            "Peringatan Forensik: Perusahaan membukukan kerugian bersih (Laba rugi & ROE negatif). Hindari untuk tabungan investasi."
-            if is_loss
-            else "Hindari untuk tabungan jangka panjang. Laba dilaporkan tinggi akibat transaksi non-operasional/penjualan aset sesaat, bukan pertumbuhan bisnis riil."
-        )
+        is_distorted = "DISTORTED_LEVERAGE_ROE" in forensics.get("flags", [])
+        if is_loss:
+            thesis = "Peringatan Forensik: Perusahaan membukukan kerugian bersih (Laba rugi & ROE negatif). Hindari untuk tabungan investasi."
+            rating = "🚨 HINDARI (Rugi Bersih)"
+            badges = ["Rugi Operasional", "High Risk"]
+        elif is_distorted:
+            thesis = "Peringatan Forensik: Ekuitas perusahaan mendekati nol atau defisiensi modal dengan utang ekstrem (DER > 4x). Angka ROE astronomis adalah ilusi akuntansi akibat modal tipis, bukan efisiensi modal riil."
+            rating = "🚨 HINDARI (Leverage Ekstrem)"
+            badges = ["Distorsi Modal", "Near Insolvency"]
+        else:
+            thesis = "Hindari untuk tabungan jangka panjang. Laba dilaporkan tinggi akibat transaksi non-operasional/penjualan aset sesaat, bukan pertumbuhan bisnis riil."
+            rating = "🚨 HINDARI (Value Trap)"
+            badges = ["Value Trap", "High Risk"]
         return {
             "score": 10.0,
             "verdict": "VALUE_TRAP",
-            "dca_rating": "🚨 HINDARI (Value Trap / Rugi)" if is_loss else "🚨 HINDARI (Value Trap)",
-            "badges": ["Rugi Operasional" if is_loss else "Value Trap", "High Risk"],
+            "dca_rating": rating,
+            "badges": badges,
             "ai_thesis": thesis,
         }
 
     score = 0.0
     roe = float(company.get("roe") or 0.0)
-    der = float(company.get("deRatio") or company.get("der") or 0.0)
+    der = float(company.get("deRatio") or company.get("der") or company.get("de_ratio") or 0.0)
     div_yield = float(company.get("yield") or company.get("Dividen") or 0.0)
     is_blue_chip = bool(company.get("is_blue_chip") or False)
     sector = company.get("sector")

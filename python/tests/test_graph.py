@@ -104,6 +104,14 @@ class TestGraph(unittest.TestCase):
         res = get_company_network("XYZ")
         self.assertEqual(len(res["nodes"]), 0)
 
+    def test_ubo_shareholder_pct_not_falling_back_to_jumlah(self):
+        """Verify that a small shareholder with 0.0% Persentase does not use raw share count as percentage."""
+        with patch("idx.graph.get_neo4j_driver", return_value=None):
+            tree = get_ubo_tree("BBCA")
+            for sh in tree.get("shareholders", []):
+                # No shareholder percentage should be > 100%
+                self.assertLessEqual(sh["pct"], 100.0, f"Shareholder {sh['name']} has invalid pct {sh['pct']}")
+
 
 if __name__ == "__main__":
     unittest.main()

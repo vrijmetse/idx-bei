@@ -48,5 +48,27 @@ class TestCompounderQuant(unittest.TestCase):
         self.assertIn("graham_number", result)
         self.assertAlmostEqual(result["graham_number"], 67.08, delta=0.01)
 
+    def test_distorted_leverage_roe_safe(self):
+        """Verify that extreme leverage (e.g. SAFE with DER 99.8x and ROE 2212%) is classified as VALUE_TRAP."""
+        from idx.compounder import evaluate_forensics, calculate_dca_compounder_score
+        mock_safe = {
+            "code": "SAFE",
+            "assets": 213.61,
+            "liabilities": 211.49,
+            "equity": 2.12,
+            "sales": 174.44,
+            "profitPeriod": 40.36,
+            "roe": 2212.2,
+            "deRatio": 99.82,
+            "sector": "Transportation & Logistic",
+        }
+        forensics = evaluate_forensics(mock_safe)
+        self.assertTrue(forensics["is_value_trap"])
+        self.assertIn("DISTORTED_LEVERAGE_ROE", forensics["flags"])
+        dca = calculate_dca_compounder_score(mock_safe, forensics, {})
+        self.assertEqual(dca["verdict"], "VALUE_TRAP")
+        self.assertEqual(dca["dca_rating"], "🚨 HINDARI (Leverage Ekstrem)")
+
+
 if __name__ == "__main__":
     unittest.main()

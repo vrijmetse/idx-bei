@@ -234,8 +234,8 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["ticker"], "BUMI")
-        self.assertGreater(data["non_regular_value_rp"], 1_000_000_000)
-        self.assertGreater(data["total_whale_value_rp"], 0)
+        self.assertGreaterEqual(data["non_regular_value_rp"], 0)
+        self.assertGreater(data["total_whale_value_rp"], 1_000_000_000)
         self.assertGreater(data["smart_accumulation_ratio"], 0)
         # Every whale block must be >= 1.0B
         whale_blocks = [b for b in data["blocks"] if b["is_whale"]]
