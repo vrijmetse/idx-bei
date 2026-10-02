@@ -4,11 +4,15 @@ High-Performance FastAPI REST & WebSocket Microservice Layer for IDX-BEI Toolkit
 
 import asyncio
 import json
+import logging
 import os
 import time
 from typing import Any
 
+import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+
+logger = logging.getLogger("idx.api")
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -142,14 +146,64 @@ async def health():
     return {"status": "ok", "service": "idx-bei-api", "version": "0.2.0"}
 
 
+_latest_prices_cache: dict[str, dict[str, Any]] = {}
+_latest_prices_ts: float = 0.0
+
+
+def get_latest_market_prices() -> dict[str, dict[str, Any]]:
+    global _latest_prices_cache, _latest_prices_ts
+    now = time.time()
+    if _latest_prices_cache and (now - _latest_prices_ts) < 60.0:
+        return _latest_prices_cache
+
+    parquet_path = os.path.join(DATA_DIR, "parquet", "stock_summary.parquet")
+    if not os.path.exists(parquet_path):
+        return {}
+
+    try:
+        df = pd.read_parquet(
+            parquet_path, columns=["Date", "StockCode", "Close", "Previous", "Change"]
+        )
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        latest_df = df.sort_values("Date").groupby("StockCode").last()
+        res = {}
+        for code, row in latest_df.iterrows():
+            close = float(row["Close"]) if pd.notna(row["Close"]) else 0.0
+            prev = float(row["Previous"]) if pd.notna(row["Previous"]) else close
+            chg = float(row["Change"]) if pd.notna(row["Change"]) else (close - prev)
+            chg_pct = (chg / prev * 100.0) if prev > 0 else 0.0
+            res[str(code)] = {
+                "price": close,
+                "previous_price": prev,
+                "daily_change": chg,
+                "daily_change_pct": round(chg_pct, 2),
+            }
+        _latest_prices_cache = res
+        _latest_prices_ts = now
+        return res
+    except Exception as e:
+        logger.warning(f"Failed to load latest market prices from parquet: {e}")
+        return _latest_prices_cache or {}
+
+
 @app.get("/api/dashboard-data", tags=["Market Data"])
 async def get_dashboard_data():
     """Return unified dashboard dataset containing companies with prices, super-insiders, and conglomerates."""
     alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
     if os.path.exists(alpha_file):
         data = load_json(alpha_file)
+        prices_map = get_latest_market_prices()
         from idx.compounder import evaluate_forensics
+
         for c in data.get("companies", []):
+            code = c.get("code")
+            if code in prices_map:
+                pm = prices_map[code]
+                c["price"] = pm["price"]
+                c["previous_price"] = pm["previous_price"]
+                c["daily_change"] = pm["daily_change"]
+                c["daily_change_pct"] = pm["daily_change_pct"]
+
             forensics = evaluate_forensics(c)
             if forensics.get("is_value_trap"):
                 c["is_value_trap"] = True
@@ -165,9 +219,19 @@ async def get_companies():
     alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
     if os.path.exists(alpha_file):
         data = load_json(alpha_file)
+        prices_map = get_latest_market_prices()
         from idx.compounder import evaluate_forensics
+
         companies = data.get("companies", [])
         for c in companies:
+            code = c.get("code")
+            if code in prices_map:
+                pm = prices_map[code]
+                c["price"] = pm["price"]
+                c["previous_price"] = pm["previous_price"]
+                c["daily_change"] = pm["daily_change"]
+                c["daily_change_pct"] = pm["daily_change_pct"]
+
             forensics = evaluate_forensics(c)
             if forensics.get("is_value_trap"):
                 c["is_value_trap"] = True
