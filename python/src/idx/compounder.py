@@ -100,7 +100,17 @@ def evaluate_forensics(company: dict[str, Any]) -> dict[str, Any]:
         flags.append("CYCLICAL_COMMODITY")
         reasons.append("Sektor komoditas siklikal — waspada pembalikan siklus harga.")
 
-    is_value_trap = "VALUE_TRAP_ONE_OFF" in flags or "NEGATIVE_EQUITY" in flags
+    # 6. Operational Loss / Negative ROE Check
+    roe_val = float(company.get("roe") or 0.0)
+    if profit < 0 or roe_val < 0 or npm < 0:
+        flags.append("UNPROFITABLE_NET_LOSS")
+        reasons.append("Perusahaan membukukan kerugian bersih (Laba rugi operasional atau ROE negatif).")
+
+    is_value_trap = (
+        "VALUE_TRAP_ONE_OFF" in flags
+        or "NEGATIVE_EQUITY" in flags
+        or "UNPROFITABLE_NET_LOSS" in flags
+    )
 
     return {
         "is_value_trap": is_value_trap,
@@ -214,12 +224,18 @@ def calculate_dca_compounder_score(
     Penalty: Value trap (instant zero/floor), cyclical peaks, extreme leverage.
     """
     if forensics.get("is_value_trap"):
+        is_loss = "UNPROFITABLE_NET_LOSS" in forensics.get("flags", [])
+        thesis = (
+            "Peringatan Forensik: Perusahaan membukukan kerugian bersih (Laba rugi & ROE negatif). Hindari untuk tabungan investasi."
+            if is_loss
+            else "Hindari untuk tabungan jangka panjang. Laba dilaporkan tinggi akibat transaksi non-operasional/penjualan aset sesaat, bukan pertumbuhan bisnis riil."
+        )
         return {
             "score": 10.0,
             "verdict": "VALUE_TRAP",
-            "dca_rating": "🚨 HINDARI (Value Trap)",
-            "badges": ["Value Trap", "Laba Semu"],
-            "ai_thesis": "Hindari untuk tabungan jangka panjang. Laba dilaporkan tinggi akibat transaksi non-operasional/penjualan aset sesaat, bukan pertumbuhan bisnis riil.",
+            "dca_rating": "🚨 HINDARI (Value Trap / Rugi)" if is_loss else "🚨 HINDARI (Value Trap)",
+            "badges": ["Rugi Operasional" if is_loss else "Value Trap", "High Risk"],
+            "ai_thesis": thesis,
         }
 
     score = 0.0

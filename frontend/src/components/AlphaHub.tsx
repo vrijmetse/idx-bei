@@ -217,7 +217,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
 
   // Filtered rows for the table
   const filteredList = useMemo(() => {
-    return companies.filter((c) => {
+    const list = companies.filter((c: Company) => {
       // Search text match
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
@@ -243,11 +243,26 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
         return isSecVal || (pbv < 1.5 && roe >= 12.0);
       }
       if (activeCategory === 'danger') {
-        return c.is_value_trap || stealthAnomalies.some((a) => a.StockCode === c.code && a.Signal === 'RETAIL_TRAP');
+        const isLoss = (c.roe != null && c.roe < 0) || (c.per != null && c.per < 0) || (c.npm != null && c.npm < 0);
+        const isLowScore = (c.compounder_score != null && c.compounder_score < 25);
+        return (
+          c.is_value_trap ||
+          isLoss ||
+          isLowScore ||
+          stealthAnomalies.some((a) => a.StockCode === c.code && a.Signal === 'RETAIL_TRAP')
+        );
       }
 
       return true;
-    }).slice(0, 50); // Cap at 50 for ultra-fast rendering
+    });
+
+    if (activeCategory === 'danger') {
+      list.sort((a: Company, b: Company) => (a.compounder_score ?? 10) - (b.compounder_score ?? 10));
+    } else if (activeCategory === 'dca_prime') {
+      list.sort((a: Company, b: Company) => (b.compounder_score ?? 0) - (a.compounder_score ?? 0));
+    }
+
+    return list.slice(0, 100);
   }, [companies, activeCategory, searchQuery, stealthAnomalies, dividendOpps]);
 
   return (
