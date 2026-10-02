@@ -72,7 +72,9 @@ def ingest_daily(date=None, client=None, export_parquet=True):
     if date is None:
         date = _today_str()
 
-    date_iso = f"{date[:4]}-{date[4:6]}-{date[6:8]}"
+    clean_date = date.replace("-", "").strip()
+    date_iso = f"{clean_date[:4]}-{clean_date[4:6]}-{clean_date[6:8]}"
+    date = clean_date
     results: dict[str, Any] = {}
 
     log.info("=" * 60)

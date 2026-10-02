@@ -38,7 +38,10 @@ def _load_data():
 
 
 def calculate_metrics(
-    returns: pd.Series, benchmark_returns: pd.Series = None, risk_free_rate: float = 0.055
+    returns: pd.Series,
+    benchmark_returns: pd.Series = None,
+    risk_free_rate: float = 0.055,
+    holding_days: int = 1,
 ) -> dict:
     """Calculates standardized quantitative performance statistics."""
     if len(returns) == 0:
@@ -80,16 +83,25 @@ def calculate_metrics(
     drawdowns = (equity_curve - running_max) / (running_max + 1e-9)
     max_drawdown = abs(drawdowns.min()) * 100.0 if len(drawdowns) > 0 else 0.0
 
-    # Annualization factor (assume 252 sessions/year)
+    # Annualization factor scaled by trade holding period
+    h_days = max(1, holding_days)
+    periods_per_year = 252.0 / h_days
     mean_ret = clean_returns.mean()
     std_ret = clean_returns.std()
     downside_std = clean_returns[clean_returns < 0].std()
 
-    daily_rf = (1.0 + risk_free_rate) ** (1.0 / 252) - 1.0
-    sharpe = ((mean_ret - daily_rf) / (std_ret + 1e-9)) * np.sqrt(252) if std_ret > 0 else 0.0
+    period_rf = (1.0 + risk_free_rate) ** (h_days / 252.0) - 1.0
+    sharpe = ((mean_ret - period_rf) / (std_ret + 1e-9)) * np.sqrt(periods_per_year) if std_ret > 0 else 0.0
     sortino = (
-        ((mean_ret - daily_rf) / (downside_std + 1e-9)) * np.sqrt(252) if downside_std > 0 else 0.0
+        ((mean_ret - period_rf) / (downside_std + 1e-9)) * np.sqrt(periods_per_year) if downside_std > 0 else 0.0
     )
+
+    # Annualized Compound Growth Rate (CAGR)
+    years = (total_trades * h_days) / 252.0
+    if years > 0 and len(equity_curve) > 0 and equity_curve.iloc[-1] > 0:
+        cagr = ((equity_curve.iloc[-1]) ** (1.0 / years) - 1.0) * 100.0
+    else:
+        cagr = total_return
 
     # Benchmark & Alpha
     bench_ret_pct = 0.0
@@ -103,7 +115,7 @@ def calculate_metrics(
 
     return {
         "total_return_pct": round(total_return, 2),
-        "cagr_pct": round(total_return, 2),
+        "cagr_pct": round(cagr, 2),
         "sharpe_ratio": round(sharpe, 2),
         "sortino_ratio": round(sortino, 2),
         "max_drawdown_pct": round(max_drawdown, 2),
@@ -429,13 +441,22 @@ def run_backtest(
             selected_tickers = radar.head(top_n)["StockCode"].tolist() if len(radar) > 0 else []
 
         elif strategy == "sharia_value":
-            sharia = sharia_value_screen(ratios_df)
+            # Point-in-time filing date slice to eliminate lookahead bias
+            if ratios_df is not None and len(ratios_df) > 0 and "fsDate" in ratios_df.columns:
+                r_slice = ratios_df[pd.to_datetime(ratios_df["fsDate"], errors="coerce") <= entry_date]
+            else:
+                r_slice = ratios_df
+            sharia = sharia_value_screen(r_slice)
             selected_tickers = sharia.head(top_n)["code"].tolist() if len(sharia) > 0 else []
 
         elif strategy == "composite_alpha":
+            if ratios_df is not None and len(ratios_df) > 0 and "fsDate" in ratios_df.columns:
+                r_slice = ratios_df[pd.to_datetime(ratios_df["fsDate"], errors="coerce") <= entry_date]
+            else:
+                r_slice = ratios_df
             alpha = composite_alpha_ranking(
                 history_slice,
-                ratios_df,
+                r_slice,
                 actions=actions_df,
                 min_turnover_rp=min_turnover_rp,
                 top_n=top_n,
@@ -552,7 +573,7 @@ def run_backtest(
 
     trades_df = pd.DataFrame(trades)
     returns_series = trades_df["Return"] if len(trades_df) > 0 else pd.Series(dtype=float)
-    metrics = calculate_metrics(returns_series)
+    metrics = calculate_metrics(returns_series, holding_days=holding_days)
     metrics["strategy"] = strategy
     metrics["holding_days"] = holding_days
     metrics["position_sizing"] = position_sizing

@@ -16,7 +16,8 @@ import {
   ChevronRight,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  ShieldCheck,
 } from 'lucide-react';
 import type { Company, StealthAnomaly, DividendOpportunity } from '../types';
 import { fetchStealthAccumulation, fetchDividendScreen, fetchDailyBriefing, fetchBrokerFlow } from '../services/api';
@@ -38,7 +39,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
   isStarred,
   onToggleStar,
 }) => {
-  const [activeCategory, setActiveCategory] = useState<'all' | 'dca_prime' | 'smart_money' | 'dividends' | 'value' | 'danger'>('all');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'dca_prime' | 'smart_money' | 'dividends' | 'value' | 'danger' | 'sharia'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [stealthAnomalies, setStealthAnomalies] = useState<StealthAnomaly[]>([]);
   const [dividendOpps, setDividendOpps] = useState<DividendOpportunity[]>([]);
@@ -228,6 +229,13 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
 
   // Filtered rows for the table
   const filteredList = useMemo(() => {
+    const getCompYield = (comp: Company) => {
+      if (comp.yield != null && comp.yield > 0) return comp.yield;
+      if (comp.dividend_yield_pct != null && comp.dividend_yield_pct > 0) return comp.dividend_yield_pct;
+      const divMatch = dividendOpps.find((d) => d.StockCode === comp.code);
+      return divMatch?.DividendYield ?? 0;
+    };
+
     const list = companies.filter((c: Company) => {
       // Search text match
       if (searchQuery) {
@@ -240,11 +248,14 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
       if (activeCategory === 'dca_prime') {
         return (c.compounder_score ?? 0) >= 70 || c.dca_verdict === 'PRIME_DCA';
       }
+      if (activeCategory === 'sharia') {
+        return c.sharia === 'S' || (c as any).is_sharia === true;
+      }
       if (activeCategory === 'smart_money') {
         return stealthAnomalies.some((a) => a.StockCode === c.code && a.Signal === 'STEALTH_ACCUMULATION');
       }
       if (activeCategory === 'dividends') {
-        return (c.yield ?? 0) >= 4.0 || dividendOpps.some((d) => d.StockCode === c.code);
+        return getCompYield(c) >= 4.0 || dividendOpps.some((d) => d.StockCode === c.code);
       }
       if (activeCategory === 'value') {
         if (c.is_value_trap) return false;
@@ -287,8 +298,8 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
           valB = b.pbv ?? b.price_bv ?? 999;
           break;
         case 'yield':
-          valA = a.yield ?? 0;
-          valB = b.yield ?? 0;
+          valA = getCompYield(a);
+          valB = getCompYield(b);
           break;
         case 'score':
         default:
@@ -927,6 +938,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
           {[
             { id: 'all', label: 'All Opportunities', icon: Compass },
             { id: 'dca_prime', label: '⭐ Layak Tabung (DCA)', icon: Sparkles },
+            { id: 'sharia', label: '☪ Sharia (ISSI)', icon: ShieldCheck },
             { id: 'value', label: 'Undervalued Quality', icon: TrendingUp },
             { id: 'smart_money', label: 'Smart Money (Bandarmology)', icon: Zap },
             { id: 'dividends', label: 'Cashflow Gems', icon: Coins },
@@ -1163,10 +1175,19 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
                     {c.roe ? `${c.roe}%` : '—'}
                   </td>
                   <td style={{ padding: '0.85rem 0.5rem', color: '#cbd5e1' }}>
-                    {c.pbv ?? c.price_bv ? `${c.pbv ?? c.price_bv}x` : '—'}
+                    {c.pbv ?? c.price_bv ? (
+                      <div>
+                        <span>{(c.pbv ?? c.price_bv)!.toFixed(2)}x</span>
+                        {c.justified_pbv ? (
+                          <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                            Fair: {c.justified_pbv.toFixed(2)}x
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : '—'}
                   </td>
-                  <td style={{ padding: '0.85rem 0.5rem', fontWeight: 700, color: (c.yield ?? 0) >= 4 ? '#eab308' : '#94a3b8' }}>
-                    {c.yield ? `${c.yield.toFixed(1)}%` : '—'}
+                  <td style={{ padding: '0.85rem 0.5rem', fontWeight: 700, color: (c.yield ?? c.dividend_yield_pct ?? 0) >= 4 ? '#eab308' : '#94a3b8' }}>
+                    {(c.yield ?? c.dividend_yield_pct ?? 0) > 0 ? `${(c.yield ?? c.dividend_yield_pct)!.toFixed(1)}%` : '—'}
                   </td>
                   <td style={{ padding: '0.85rem 0.5rem', textAlign: 'right' }}>
                     <div style={{ display: 'inline-flex', gap: '0.4rem' }}>

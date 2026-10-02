@@ -307,7 +307,7 @@ export const BacktesterTab: React.FC<BacktesterTabProps> = ({ onSelectStock }) =
         <div className="stat-card" style={{ background: 'rgba(15, 23, 42, 0.55)', padding: '1.25rem', borderRadius: '14px' }}>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Strategy Return</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.35rem', color: (metrics?.total_return_pct ?? 0) >= 0 ? '#10b981' : '#ef4444' }}>
-            {metrics?.total_return_pct !== undefined ? `${metrics.total_return_pct > 0 ? '+' : ''}${metrics.total_return_pct}%` : '—'}
+            {metrics?.total_return_pct != null ? `${metrics.total_return_pct > 0 ? '+' : ''}${metrics.total_return_pct}%` : '—'}
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
             Cumulative portfolio return
@@ -317,7 +317,7 @@ export const BacktesterTab: React.FC<BacktesterTabProps> = ({ onSelectStock }) =
         <div className="stat-card" style={{ background: 'rgba(15, 23, 42, 0.55)', padding: '1.25rem', borderRadius: '14px' }}>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Sharpe Ratio</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.35rem', color: '#38bdf8' }}>
-            {metrics?.sharpe_ratio !== undefined ? metrics.sharpe_ratio : '—'}
+            {metrics?.sharpe_ratio != null ? metrics.sharpe_ratio : '—'}
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
             Risk-adjusted excess return
@@ -327,7 +327,7 @@ export const BacktesterTab: React.FC<BacktesterTabProps> = ({ onSelectStock }) =
         <div className="stat-card" style={{ background: 'rgba(15, 23, 42, 0.55)', padding: '1.25rem', borderRadius: '14px' }}>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Max Drawdown</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.35rem', color: '#ef4444' }}>
-            {metrics?.max_drawdown_pct !== undefined ? `-${Math.abs(metrics.max_drawdown_pct)}%` : '—'}
+            {metrics?.max_drawdown_pct != null ? `-${Math.abs(metrics.max_drawdown_pct)}%` : '—'}
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
             Peak-to-trough decline
@@ -337,7 +337,7 @@ export const BacktesterTab: React.FC<BacktesterTabProps> = ({ onSelectStock }) =
         <div className="stat-card" style={{ background: 'rgba(15, 23, 42, 0.55)', padding: '1.25rem', borderRadius: '14px' }}>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Win Rate</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.35rem', color: '#facc15' }}>
-            {metrics?.win_rate_pct !== undefined ? `${metrics.win_rate_pct}%` : '—'}
+            {metrics?.win_rate_pct != null ? `${metrics.win_rate_pct}%` : '—'}
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
             Winning trades percentage
@@ -347,7 +347,7 @@ export const BacktesterTab: React.FC<BacktesterTabProps> = ({ onSelectStock }) =
         <div className="stat-card" style={{ background: 'rgba(15, 23, 42, 0.55)', padding: '1.25rem', borderRadius: '14px' }}>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Benchmark Alpha</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.35rem', color: (metrics?.alpha_pct ?? 0) >= 0 ? '#10b981' : '#ef4444' }}>
-            {metrics?.alpha_pct !== undefined ? `${metrics.alpha_pct > 0 ? '+' : ''}${metrics.alpha_pct}%` : '—'}
+            {metrics?.alpha_pct != null ? `${metrics.alpha_pct > 0 ? '+' : ''}${metrics.alpha_pct}%` : '—'}
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
             Outperformance vs IHSG
@@ -393,7 +393,7 @@ export const BacktesterTab: React.FC<BacktesterTabProps> = ({ onSelectStock }) =
                 Hold through Ex-Date, pay 10% dividend tax, suffer Ex-Date drop.
               </p>
               <div style={{ fontSize: '1.5rem', fontWeight: 800, color: (metrics.strategy_a_naive_hold?.total_return_pct ?? 0) >= 0 ? '#10b981' : '#ef4444' }}>
-                {metrics.strategy_a_naive_hold?.total_return_pct !== undefined ? `${metrics.strategy_a_naive_hold.total_return_pct > 0 ? '+' : ''}${metrics.strategy_a_naive_hold.total_return_pct}%` : '—'}
+                {metrics.strategy_a_naive_hold?.total_return_pct != null ? `${metrics.strategy_a_naive_hold.total_return_pct > 0 ? '+' : ''}${metrics.strategy_a_naive_hold.total_return_pct}%` : '—'}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
                 <span>Win Rate: {metrics.strategy_a_naive_hold?.win_rate_pct ?? '—'}%</span>
@@ -416,7 +416,7 @@ export const BacktesterTab: React.FC<BacktesterTabProps> = ({ onSelectStock }) =
                 Sell on Cum Date close, avoid Ex-Date drop & dividend tax.
               </p>
               <div style={{ fontSize: '1.5rem', fontWeight: 800, color: (metrics.strategy_b_precum_exit?.total_return_pct ?? 0) >= 0 ? '#10b981' : '#ef4444' }}>
-                {metrics.strategy_b_precum_exit?.total_return_pct !== undefined ? `${metrics.strategy_b_precum_exit.total_return_pct > 0 ? '+' : ''}${metrics.strategy_b_precum_exit.total_return_pct}%` : '—'}
+                {metrics.strategy_b_precum_exit?.total_return_pct != null ? `${metrics.strategy_b_precum_exit.total_return_pct > 0 ? '+' : ''}${metrics.strategy_b_precum_exit.total_return_pct}%` : '—'}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
                 <span>Win Rate: {metrics.strategy_b_precum_exit?.win_rate_pct ?? '—'}%</span>
@@ -439,7 +439,7 @@ export const BacktesterTab: React.FC<BacktesterTabProps> = ({ onSelectStock }) =
                 Enter 2 days after Ex-Date after panic settles, hold 10 sessions.
               </p>
               <div style={{ fontSize: '1.5rem', fontWeight: 800, color: (metrics.strategy_c_postex_rebuy?.total_return_pct ?? 0) >= 0 ? '#10b981' : '#ef4444' }}>
-                {metrics.strategy_c_postex_rebuy?.total_return_pct !== undefined ? `${metrics.strategy_c_postex_rebuy.total_return_pct > 0 ? '+' : ''}${metrics.strategy_c_postex_rebuy.total_return_pct}%` : '—'}
+                {metrics.strategy_c_postex_rebuy?.total_return_pct != null ? `${metrics.strategy_c_postex_rebuy.total_return_pct > 0 ? '+' : ''}${metrics.strategy_c_postex_rebuy.total_return_pct}%` : '—'}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
                 <span>Win Rate: {metrics.strategy_c_postex_rebuy?.win_rate_pct ?? '—'}%</span>
@@ -542,7 +542,7 @@ export const BacktesterTab: React.FC<BacktesterTabProps> = ({ onSelectStock }) =
                     <td style={{ padding: '0.75rem 0.5rem' }}>Rp {t.EntryPrice.toLocaleString()}</td>
                     <td style={{ padding: '0.75rem 0.5rem' }}>Rp {t.ExitPrice.toLocaleString()}</td>
                     <td style={{ padding: '0.75rem 0.5rem', color: 'var(--text-secondary)' }}>
-                      {t.Weight !== undefined ? `${(t.Weight * 100).toFixed(1)}%` : '—'}
+                      {t.Weight != null ? `${(t.Weight * 100).toFixed(1)}%` : '—'}
                     </td>
                     <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', fontWeight: 700, color: t.ReturnPct >= 0 ? '#10b981' : '#ef4444' }}>
                       {t.ReturnPct >= 0 ? `+${t.ReturnPct}%` : `${t.ReturnPct}%`}

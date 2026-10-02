@@ -42,8 +42,10 @@ def _save_cached_rate(rate: float, source: str) -> None:
             "timestamp": time.time(),
             "source": source,
         }
-        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        tmp_file = CACHE_FILE + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
+        os.replace(tmp_file, CACHE_FILE)
     except Exception as exc:
         log.warning("Failed to write exchange rate cache: %s", exc)
 

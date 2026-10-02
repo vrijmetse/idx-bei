@@ -137,6 +137,8 @@ export interface Company {
   dps?: number | null; // Latest DPS tranche
   annualized_dps?: number | null; // Sum of DPS for the year
   dividend_yield_pct?: number | null; // Calculated based on annualized_dps
+  yield?: number | null; // AlphaHub alias
+  sharia?: string | null; // 'S' for Sharia compliant (ISSI)
   dividend_trap_score?: number | null;
   dividend_trap_tier?: string | null;
 

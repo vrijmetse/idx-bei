@@ -336,6 +336,16 @@ def analyze_stock_dividend(
     if der > 2.5 and roe < 10.0:
         trap_score += 10.0
         risk_factors.append(f"High leverage (DER {der:.2f}x) with weak ROE ({roe:.1f}%)")
+    current_ratio = (
+        float(last_ratio.get("currentRatio", 1.5))
+        if last_ratio is not None and pd.notna(last_ratio.get("currentRatio"))
+        else 1.5
+    )
+    if dpr_pct > 80.0 and current_ratio < 1.0:
+        trap_score += 15.0
+        risk_factors.append(
+            f"Liquidity risk: High payout (DPR {dpr_pct:.1f}%) with Current Ratio ({current_ratio:.2f}x < 1.0x)"
+        )
 
     trap_score = max(0.0, min(100.0, trap_score))
 

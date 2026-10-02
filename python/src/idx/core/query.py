@@ -31,7 +31,7 @@ def _dataset_glob(dataset, base_dir=None):
     pattern = os.path.join(d_dir, "**", "*.parquet")
     if not glob.glob(pattern, recursive=True):
         # Fallback to consolidated parquet if available
-        consolidated = os.path.join(os.path.dirname(d_dir), "parquet", f"{dataset}.parquet")
+        consolidated = os.path.join(os.path.dirname(os.path.dirname(d_dir)), "parquet", f"{dataset}.parquet")
         if os.path.exists(consolidated):
             return consolidated
         raise FileNotFoundError(f"No partitions found for dataset '{dataset}' under {d_dir}")
@@ -56,15 +56,17 @@ def query_dataset(
         pandas DataFrame of matching rows.
     """
     pattern = _dataset_glob(dataset, base_dir)
+    start_iso = ts._normalize_iso_date(start)
+    end_iso = ts._normalize_iso_date(end)
 
     conds = []
-    if start:
+    if start_iso:
         conds.append(
-            f"(Date >= '{start}' OR regexp_extract(filename, 'date=(.*)\\.parquet', 1) >= '{start}')"
+            f"(substr(cast(Date as VARCHAR), 1, 10) >= '{start_iso}' OR regexp_extract(filename, 'date=([^/\\\\]+)\\.parquet', 1) >= '{start_iso}')"
         )
-    if end:
+    if end_iso:
         conds.append(
-            f"(Date <= '{end}' OR regexp_extract(filename, 'date=(.*)\\.parquet', 1) <= '{end}')"
+            f"(substr(cast(Date as VARCHAR), 1, 10) <= '{end_iso}' OR (regexp_extract(filename, 'date=([^/\\\\]+)\\.parquet', 1) != '' AND regexp_extract(filename, 'date=([^/\\\\]+)\\.parquet', 1) <= '{end_iso}'))"
         )
     if where:
         conds.append(f"({where})")
@@ -73,7 +75,7 @@ def query_dataset(
 
     query = f"""
         SELECT {columns}
-        FROM read_parquet(['{pattern}'], filename = true)
+        FROM read_parquet(['{pattern}'], filename = true, union_by_name = true)
         {where_clause}
         ORDER BY 1
         {limit_clause}

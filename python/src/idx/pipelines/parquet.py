@@ -152,21 +152,28 @@ def export_stock_timeseries(output=None, incremental=False):
         df["NetForeignFlow"] = df["ForeignBuy"] - df["ForeignSell"]
 
     if "Close" in df.columns and "Previous" in df.columns:
-        df["Return"] = ((df["Close"] - df["Previous"]) / df["Previous"]).round(6)
+        df["Return"] = (
+            ((df["Close"] - df["Previous"]) / df["Previous"])
+            .where(df["Previous"] > 0)
+            .fillna(0.0)
+            .round(6)
+        )
 
     if "Value" in df.columns and "Volume" in df.columns:
         df["VWAP"] = (df["Value"] / df["Volume"]).where(df["Volume"] > 0).round(2)
 
     if existing_df is not None:
         df = pd.concat([existing_df, df], ignore_index=True)
-        df.drop_duplicates(subset=["Date", "StockCode"], keep="last", inplace=True)
+    df.drop_duplicates(subset=["Date", "StockCode"], keep="last", inplace=True)
 
     # Sort for optimal compression and query patterns
     df.sort_values(["Date", "StockCode"], inplace=True, ignore_index=True)
 
-    # Write Parquet with snappy compression
+    # Write Parquet with snappy compression atomically
     table = pa.Table.from_pandas(df, preserve_index=False)
-    pq.write_table(table, output, compression="snappy")
+    tmp_output = output + ".tmp"
+    pq.write_table(table, tmp_output, compression="snappy")
+    os.replace(tmp_output, output)
 
     size_mb = os.path.getsize(output) / (1024 * 1024)
     log.info(
@@ -227,19 +234,21 @@ def export_broker_timeseries(output=None, incremental=False):
 
     if existing_df is not None:
         df = pd.concat([existing_df, df], ignore_index=True)
-        id_col = (
-            "IDFirm"
-            if "IDFirm" in df.columns
-            else ("IDBrokerSummary" if "IDBrokerSummary" in df.columns else None)
-        )
-        if id_col:
-            df.drop_duplicates(subset=["Date", id_col], keep="last", inplace=True)
+    id_col = (
+        "IDFirm"
+        if "IDFirm" in df.columns
+        else ("IDBrokerSummary" if "IDBrokerSummary" in df.columns else None)
+    )
+    if id_col:
+        df.drop_duplicates(subset=["Date", id_col], keep="last", inplace=True)
 
     sort_col = "IDFirm" if "IDFirm" in df.columns else "Date"
     df.sort_values(["Date", sort_col], inplace=True, ignore_index=True)
 
     table = pa.Table.from_pandas(df, preserve_index=False)
-    pq.write_table(table, output, compression="snappy")
+    tmp_output = output + ".tmp"
+    pq.write_table(table, tmp_output, compression="snappy")
+    os.replace(tmp_output, output)
 
     size_mb = os.path.getsize(output) / (1024 * 1024)
     log.info(
@@ -310,19 +319,26 @@ def export_index_timeseries(output=None, incremental=False):
 
     # Derive index return
     if "Close" in df.columns and "Previous" in df.columns:
-        df["Return"] = ((df["Close"] - df["Previous"]) / df["Previous"]).round(6)
+        df["Return"] = (
+            ((df["Close"] - df["Previous"]) / df["Previous"])
+            .where(df["Previous"] > 0)
+            .fillna(0.0)
+            .round(6)
+        )
 
     if existing_df is not None:
         df = pd.concat([existing_df, df], ignore_index=True)
-        idx_col = "IndexCode" if "IndexCode" in df.columns else "IndexName"
-        if idx_col in df.columns:
-            df.drop_duplicates(subset=["Date", idx_col], keep="last", inplace=True)
+    idx_col = "IndexCode" if "IndexCode" in df.columns else "IndexName"
+    if idx_col in df.columns:
+        df.drop_duplicates(subset=["Date", idx_col], keep="last", inplace=True)
 
     sort_col = "IndexCode" if "IndexCode" in df.columns else "Date"
     df.sort_values(["Date", sort_col], inplace=True, ignore_index=True)
 
     table = pa.Table.from_pandas(df, preserve_index=False)
-    pq.write_table(table, output, compression="snappy")
+    tmp_output = output + ".tmp"
+    pq.write_table(table, tmp_output, compression="snappy")
+    os.replace(tmp_output, output)
 
     size_mb = os.path.getsize(output) / (1024 * 1024)
     log.info(

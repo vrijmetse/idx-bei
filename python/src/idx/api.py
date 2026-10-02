@@ -308,6 +308,7 @@ async def get_signals(
 
 
 @app.get("/api/stock/{ticker}", tags=["Market Data"])
+@app.get("/api/stocks/{ticker}", tags=["Market Data"])
 async def get_stock_data(ticker: str, limit: int = 120):
     import numpy as np
     import pandas as pd
@@ -393,6 +394,9 @@ async def get_stock_data(ticker: str, limit: int = 120):
 
 
 @app.get("/api/stock/{ticker}/blocks", tags=["Market Data"])
+@app.get("/api/stocks/{ticker}/blocks", tags=["Market Data"])
+@app.get("/api/stock/{ticker}/tape", tags=["Market Data"])
+@app.get("/api/stocks/{ticker}/tape", tags=["Market Data"])
 async def get_stock_blocks(ticker: str):
     import pandas as pd
 
@@ -659,6 +663,18 @@ async def get_cross():
     return detect_cross_holdings()
 
 
+@app.get("/api/power-map", tags=["Knowledge Graph"])
+async def get_power_map(top_centrality: int = 20):
+    centrality_df = calculate_board_centrality(top_n=top_centrality)
+    cross = detect_cross_holdings()
+    drift = get_latest_shareholder_drift()
+    return {
+        "centrality": clean_dict_records(centrality_df.to_dict(orient="records")),
+        "cross_holdings": cross,
+        "drift": drift,
+    }
+
+
 @app.post("/api/query/sql", tags=["Analytics"])
 async def execute_sql(req: SQLQueryRequest):
     sql = req.sql.strip()
@@ -746,6 +762,7 @@ async def get_stealth_accumulation(
 
 
 @app.post("/api/backtest", tags=["Backtesting"])
+@app.post("/api/backtest/run", tags=["Backtesting"])
 async def backtest_strategy(req: BacktestRequest):
     import numpy as np
 
@@ -776,7 +793,14 @@ async def backtest_strategy(req: BacktestRequest):
         equity_curve: list[dict[str, object]] = []
 
         if len(trades_df) > 0:
-            trades_df_sorted = trades_df.sort_values("ExitDate")
+            curve_source = trades_df
+            if req.strategy == "dividend_arbitrage" and "Strategy" in trades_df.columns:
+                # Isolate Strategy B (Pre-cum exit) for the equity trajectory
+                b_slice = trades_df[trades_df["Strategy"] == "B_PreCum_Exit"]
+                if len(b_slice) > 0:
+                    curve_source = b_slice
+
+            trades_df_sorted = curve_source.sort_values("ExitDate")
             running_equity = 100.0
             first_entry = str(trades_df_sorted.iloc[0]["EntryDate"])
             equity_curve.append({"time": first_entry, "value": 100.0})

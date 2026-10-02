@@ -48,9 +48,19 @@ def partition_path(dataset, date_iso, base_dir=None):
     return os.path.join(dataset_dir(dataset, base_dir), f"date={date_iso}.parquet")
 
 
+def _normalize_iso_date(d: str | None) -> str | None:
+    """Normalizes YYYYMMDD or YYYY-MM-DD string to ISO YYYY-MM-DD format."""
+    if not d:
+        return None
+    cleaned = str(d).strip()
+    if len(cleaned) == 8 and cleaned.isdigit():
+        return f"{cleaned[:4]}-{cleaned[4:6]}-{cleaned[6:8]}"
+    return cleaned[:10]
+
+
 def compacted_partitions(dataset, base_dir=None):
     """Returns list of monthly/quarterly compacted parquet paths."""
-    pattern = os.path.join(dataset_dir(dataset, base_dir), "year=*", "month=*.parquet")
+    pattern = os.path.join(dataset_dir(dataset, base_dir), "year=*", "*.parquet")
     return sorted(glob.glob(pattern))
 
 
@@ -119,6 +129,8 @@ def read_dataset(dataset, start=None, end=None, base_dir=None):
     Returns:
         pandas DataFrame sorted by Date; empty DataFrame if no data.
     """
+    start = _normalize_iso_date(start)
+    end = _normalize_iso_date(end)
     dates = existing_dates(dataset, base_dir)
     selected = sorted(
         d for d, _ in dates.items() if (start is None or d >= start) and (end is None or d <= end)

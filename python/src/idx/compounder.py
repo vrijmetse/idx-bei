@@ -137,8 +137,8 @@ def calculate_justified_pbv(
     Justified PBV = (ROE - g) / (Ke - g)
     """
     roe_decimal = roe / 100.0
-    if roe_decimal <= growth_rate:
-        return 0.5  # Distressed / Low ROE floor
+    if roe_decimal <= growth_rate or cost_of_equity <= growth_rate or cost_of_equity <= 0:
+        return 0.5  # Distressed / Low ROE floor or non-positive denominator (Ke <= g)
     justified = (roe_decimal - growth_rate) / (cost_of_equity - growth_rate)
     return round(max(0.5, min(justified, 6.0)), 2)
 

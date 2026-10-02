@@ -41,7 +41,7 @@ interface BlockTrade {
   sellerBroker: string;
   sellerName: string;
   sellerType: 'INSTITUTIONAL' | 'RETAIL';
-  tradeType: 'WHALE_BUY' | 'WHALE_DUMP' | 'BLOCK_CROSSING';
+  tradeType: 'WHALE_BUY' | 'WHALE_DUMP' | 'BLOCK_CROSSING' | 'INSTITUTIONAL_CROSSING' | 'WHALE_ACCUMULATION' | 'RETAIL_FLOW' | string;
   isWhale: boolean;
 }
 
@@ -1031,6 +1031,22 @@ export const ChartTab: React.FC<ChartTabProps> = ({
               <div style={{ fontSize: '0.85rem', color: '#64748b' }}>— (No Institutional Blocks Today)</div>
             )}
           </div>
+
+          <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '10px', padding: '0.85rem 1rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Pasar Nego Crossings</div>
+            {blockData && blockData.non_regular_value_rp > 0 ? (
+              <>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#c084fc' }}>
+                  Rp {(blockData.non_regular_value_rp / 1e9).toFixed(2)}B
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>
+                  {(blockData.non_regular_volume_shares / 1e6).toFixed(2)}M shares ({blockData.non_regular_frequency} crossings)
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>— (0 Non-Regular Trades)</div>
+            )}
+          </div>
         </div>
 
         {/* Trade Stream Table */}
@@ -1062,7 +1078,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
                     bg: 'rgba(239, 68, 68, 0.2)',
                     border: 'rgba(239, 68, 68, 0.4)',
                   };
-                } else if (trade.tradeType === 'BLOCK_CROSSING') {
+                } else if (trade.tradeType === 'BLOCK_CROSSING' || trade.tradeType === 'INSTITUTIONAL_CROSSING') {
                   badgeStyle = {
                     label: 'INSTITUTIONAL CROSSING',
                     color: '#facc15',
