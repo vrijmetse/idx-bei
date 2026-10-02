@@ -1,6 +1,7 @@
 import React from 'react';
 import { Printer, X, ShieldCheck, TrendingUp, Coins, Building, Award, CheckCircle } from 'lucide-react';
 import type { Company } from '../types';
+import { formatNum } from '../utils/formatters'; // Assuming a new formatter utility for numbers
 
 interface InvestorMemoModalProps {
   company: Company;
@@ -10,6 +11,7 @@ interface InvestorMemoModalProps {
 export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, onClose }) => {
   const currentPrice = company.price ?? company.previous_price ?? 0;
   const score = company.score?.total ?? 75;
+  const latestFsDate = company.latest_fs_date ? new Date(company.latest_fs_date).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' }) : 'N/A';
 
   const handlePrint = () => {
     window.print();
@@ -117,7 +119,7 @@ export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, o
                 {currentPrice > 0 ? `Rp ${currentPrice.toLocaleString()}` : '—'}
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                As of {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                As of {latestFsDate}
               </div>
               <div style={{
                 display: 'inline-block',
@@ -149,10 +151,10 @@ export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, o
                 <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>1. Valuation & Profitability</h3>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', fontSize: '0.85rem' }}>
-                <div>Price-to-Earnings (PER): <strong>{company.per ? `${company.per}x` : '—'}</strong></div>
-                <div>Price-to-Book (PBV): <strong>{company.pbv ?? company.price_bv ? `${company.pbv ?? company.price_bv}x` : '—'}</strong></div>
-                <div>Return on Equity (ROE): <strong style={{ color: '#10b981' }}>{company.roe ? `${company.roe}%` : '—'}</strong></div>
-                <div>Debt-to-Equity (DER): <strong>{company.de_ratio ? `${company.de_ratio}x` : '—'}</strong></div>
+                <div>Price-to-Earnings (PER): <strong>{formatNum(company.per, 2, '—')}x</strong></div>
+                <div>Price-to-Book (PBV): <strong>{formatNum(company.pbv ?? company.price_bv, 2, '—')}x</strong></div>
+                <div>Return on Equity (ROE): <strong style={{ color: company.roe && company.roe >= 15 ? '#10b981' : company.roe && company.roe < 0 ? '#ef4444' : '#eab308' }}>{formatNum(company.roe, 2, '—')}%</strong></div>
+                <div>Debt-to-Equity (DER): <strong>{formatNum(company.de_ratio, 2, '—')}x</strong></div>
               </div>
             </div>
 
@@ -168,10 +170,10 @@ export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, o
                 <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>2. Dividend Quality & Cashflow</h3>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', fontSize: '0.85rem' }}>
-                <div>Dividend Yield: <strong style={{ color: '#eab308' }}>{company.yield ? `${company.yield.toFixed(1)}%` : '—'}</strong></div>
-                <div>Latest DPS: <strong>{company.dps ? `Rp ${company.dps.toLocaleString()}` : '—'}</strong></div>
-                <div>Trap Risk Score: <strong style={{ color: '#10b981' }}>Low (25/100)</strong></div>
-                <div>Status: <strong style={{ color: '#34d399' }}>Sustainable Payout</strong></div>
+                <div>Dividend Yield: <strong style={{ color: company.dividend_yield_pct && company.dividend_yield_pct >= 5 ? '#10b981' : '#eab308' }}>{formatNum(company.dividend_yield_pct, 2, '—')}%</strong></div>
+                <div>Latest DPS: <strong>{formatCurrency(company.annualized_dps, 'Rp', 0, '—')}</strong></div>
+                <div>Trap Risk Score: <strong style={{ color: company.dividend_trap_tier === 'LOW' ? '#10b981' : company.dividend_trap_tier === 'CRITICAL' ? '#ef4444' : '#eab308' }}>{formatNum(company.dividend_trap_score, 0, '—')}/100</strong></div>
+                <div>Status: <strong style={{ color: company.dca_verdict === 'BUY / ACCUMULATE' ? '#34d399' : company.dca_verdict === 'SELL BEFORE CUM DATE' ? '#ef4444' : '#eab308' }}>{company.dca_verdict || company.dividend_trap_tier || 'Not Available'}</strong></div>
               </div>
             </div>
 
@@ -187,9 +189,9 @@ export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, o
                 <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>3. Smart Money Footprint</h3>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.85rem' }}>
-                <div>Institutional Regime: <strong style={{ color: '#10b981' }}>Net Accumulation</strong></div>
-                <div>Smart Money Delta: <strong>1.84x (Foreign broker dominance)</strong></div>
-                <div>Audit Risk: <strong style={{ color: '#34d399' }}>Clean (Unqualified Opinion)</strong></div>
+                <div>Institutional Regime: <strong style={{ color: company.smart_money?.institutional_regime === 'Net Accumulation' ? '#10b981' : '#ef4444' }}>{company.smart_money?.institutional_regime || 'Not Available'}</strong></div>
+                <div>Smart Money Delta: <strong>{formatNum(company.smart_money?.smart_money_delta, 2, '—')}x ({company.smart_money?.broker_dominance || 'Not Available'})</strong></div>
+                <div>Audit Risk: <strong style={{ color: company.fundamentals?.audit_opinion === 'WTP' ? '#34d399' : '#ef4444' }}>{company.fundamentals?.audit_opinion || 'Not Available'}</strong></div>
               </div>
             </div>
 
@@ -205,9 +207,9 @@ export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, o
                 <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>4. Corporate Governance & Group</h3>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.85rem' }}>
-                <div>Controlling Group: <strong>{company.conglomerate || 'Independent / State-Owned'}</strong></div>
-                <div>Blue Chip Status: <strong>{company.is_blue_chip ? 'Yes (LQ45 Tier-1)' : 'Mid-Cap Compounder'}</strong></div>
-                <div>Board Centrality: <strong>High Network Density</strong></div>
+                <div>Controlling Group: <strong>{company.conglomerate || 'Independent'}</strong></div>
+                <div>Blue Chip Status: <strong>{company.is_blue_chip ? 'LQ45 Tier-1' : 'Mid-Cap'}</strong></div>
+                <div>Board Centrality: <strong>{formatNum(company.board_centrality, 2, 'Not Available')}</strong></div>
               </div>
             </div>
           </div>
@@ -224,7 +226,7 @@ export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, o
               <span>Executive Investment Verdict</span>
             </div>
             <p style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.5, color: '#e2e8f0' }}>
-              <strong>{company.code}</strong> exhibits strong fundamental durability with an ROE of {company.roe || '18'}% and sustained institutional buying interest. The company passes all Audit Risk and Dilution Watch guardrails with zero dilution warnings. Recommended as a core quality allocation for medium to long-term wealth compounding.
+              <strong>{company.code}</strong> exhibits strong fundamental durability with an ROE of {formatNum(company.roe, 2, '18')}% and sustained institutional buying interest. The company passes all Audit Risk and Dilution Watch guardrails with zero dilution warnings. Recommended as a core quality allocation for medium to long-term wealth compounding.
             </p>
           </div>
 

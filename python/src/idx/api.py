@@ -18,6 +18,20 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import re
+
+TICKER_REGEX = re.compile(r"^[A-Za-z0-9]{2,10}$")
+
+
+def validate_ticker(ticker: str) -> str:
+    """Strictly validates ticker symbol format to prevent SQL injection and malformed queries."""
+    if not ticker or not TICKER_REGEX.match(ticker):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid ticker symbol '{ticker}'. Must be 2-10 alphanumeric characters.",
+        )
+    return ticker.upper()
+
 from idx.core.ownership import get_latest_shareholder_drift
 from idx.core.query import query_dataset
 from idx.core.utils import DATA_DIR, load_json
@@ -40,7 +54,7 @@ def clean_record(r: dict[str, Any]) -> dict[str, Any]:
 
     out = {}
     for k, v in r.items():
-        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        if pd.isna(v) or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
             out[k] = None
         elif isinstance(v, dict):
             out[k] = clean_record(v)
@@ -50,7 +64,7 @@ def clean_record(r: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(item, dict)
                 else (
                     None
-                    if isinstance(item, float) and (math.isnan(item) or math.isinf(item))
+                    if pd.isna(item) or (isinstance(item, float) and (math.isnan(item) or math.isinf(item)))
                     else item
                 )
                 for item in v
@@ -298,7 +312,7 @@ async def get_stock_data(ticker: str, limit: int = 120):
     import numpy as np
     import pandas as pd
 
-    ticker = ticker.upper()
+    ticker = validate_ticker(ticker)
     df = query_dataset("stock_summary", where=f"StockCode = '{ticker}'")
     if len(df) == 0:
         raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' not found.")
@@ -384,7 +398,7 @@ async def get_stock_blocks(ticker: str):
 
     from idx.signals import INSTITUTIONAL_BROKERS, RETAIL_BROKERS
 
-    ticker = ticker.upper()
+    ticker = validate_ticker(ticker)
     df = query_dataset("stock_summary", where=f"StockCode = '{ticker}'")
     if len(df) == 0:
         raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' not found.")
@@ -579,20 +593,27 @@ async def get_broker_flow(date: str | None = None, top_k: int = 10):
 async def get_peers(ticker: str):
     import pandas as pd
 
-    ticker = ticker.upper()
+    ticker = validate_ticker(ticker)
     ratios_path = os.path.join(DATA_DIR, "parquet", "financial_ratios.parquet")
     if not os.path.exists(ratios_path):
         raise HTTPException(status_code=404, detail="Financial ratios parquet not found.")
 
     df = pd.read_parquet(ratios_path)
     latest = df.sort_values("fsDate").groupby("code").last().reset_index()
-    return clean_dict_records(latest.to_dict("records"))
+    stock_row = latest[latest["code"] == ticker]
+    if stock_row.empty:
+        raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' not found in financial ratios.")
+    
+    sector = stock_row.iloc[0].get("sector")
+    peers = latest[(latest["sector"] == sector) & (latest["code"] != ticker)]
+    return clean_dict_records(peers.to_dict("records"))
 
 
 @app.get("/api/dividend/{ticker}", tags=["Dividends"])
 async def get_dividend_analysis(ticker: str):
     from idx.dividend import analyze_stock_dividend
 
+    ticker = validate_ticker(ticker)
     res = analyze_stock_dividend(ticker)
     if not res.get("has_dividend"):
         raise HTTPException(status_code=404, detail=res.get("message", "Dividend data not found"))
@@ -614,11 +635,13 @@ async def get_drift():
 
 @app.get("/api/graph/ubo/{ticker}", tags=["Knowledge Graph"])
 async def get_ubo(ticker: str):
+    ticker = validate_ticker(ticker)
     return get_ubo_tree(ticker)
 
 
 @app.get("/api/graph/network/{ticker}", tags=["Knowledge Graph"])
 async def get_network(ticker: str):
+    ticker = validate_ticker(ticker)
     data = get_company_network(ticker)
     if not data.get("nodes"):
         raise HTTPException(status_code=404, detail=f"No graph network found for {ticker}")
@@ -639,7 +662,22 @@ async def get_cross():
 @app.post("/api/query/sql", tags=["Analytics"])
 async def execute_sql(req: SQLQueryRequest):
     sql = req.sql.strip()
-    disallowed = ["insert ", "update ", "delete ", "drop ", "create ", "alter ", "truncate "]
+    disallowed = [
+        "insert ",
+        "update ",
+        "delete ",
+        "drop ",
+        "create ",
+        "alter ",
+        "truncate ",
+        "copy ",
+        "write_",
+        "export ",
+        "call ",
+        "pragma ",
+        "install ",
+        "load ",
+    ]
     if any(word in sql.lower() for word in disallowed):
         raise HTTPException(status_code=400, detail="Only read-only SELECT queries are allowed.")
 
@@ -656,7 +694,11 @@ async def execute_sql(req: SQLQueryRequest):
     for name in table_names:
         p_file = os.path.join(DATA_DIR, "parquet", f"{name}.parquet")
         if os.path.exists(p_file):
-            con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_parquet('{p_file}')")
+            con.execute(f"CREATE TABLE {name} AS SELECT * FROM read_parquet('{p_file}')")
+
+    # Secure sandbox: disable external file system & network access before running query
+    con.execute("SET enable_external_access = false;")
+    con.execute("SET max_memory = '512MB';")
 
     try:
         res_df = con.execute(sql).fetchdf()

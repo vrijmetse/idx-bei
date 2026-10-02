@@ -119,6 +119,16 @@ def evaluate_forensics(company: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def calculate_graham_number(eps: float, bvps: float) -> float | None:
+    """
+    Calculates Benjamin Graham Fair Value Number:
+    Graham Number = sqrt(22.5 * EPS * BVPS)
+    """
+    if eps <= 0 or bvps <= 0:
+        return None
+    return round((22.5 * eps * bvps) ** 0.5, 2)
+
+
 def calculate_justified_pbv(
     roe: float, cost_of_equity: float = 0.105, growth_rate: float = 0.05
 ) -> float:
@@ -179,8 +189,8 @@ def evaluate_sector_valuation(company: dict[str, Any], forensics: dict[str, Any]
         else:
             status = "UNPROFITABLE_BANK"
     else:
-        # Non-financial emiten
-        if pbv > 0 and pbv < 1.0 and roe >= 8.0:
+        # Non-financial emiten (must have positive earnings to be deep value)
+        if pbv > 0 and pbv < 1.0 and roe >= 8.0 and per > 0:
             status = "DEEP_VALUE"
             discount_pct = round((1.0 - pbv) * 100.0, 1)
         elif 0 < per <= 12.0 and 0 < pbv <= 2.2 and roe >= 12.0:
@@ -203,11 +213,16 @@ def evaluate_sector_valuation(company: dict[str, Any], forensics: dict[str, Any]
         "VALUE_TRAP": "🚨 Value Trap",
     }
 
+    eps_val = float(company.get("eps") or 0.0)
+    bvps_val = float(company.get("bookValue") or company.get("bvps") or 0.0)
+    graham_num = calculate_graham_number(eps_val, bvps_val)
+
     return {
         "status": status,
         "justified_pbv": justified_pbv,
         "discount_pct": discount_pct,
         "is_undervalued": is_undervalued,
+        "graham_number": graham_num,
         "verdict_badge": badge_map.get(status, "⚖️ Fair Value"),
     }
 

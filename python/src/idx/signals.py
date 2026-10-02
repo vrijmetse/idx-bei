@@ -488,6 +488,11 @@ def detect_stealth_accumulation(
         for ticker, g in b_df.groupby("StockCode"):
             s_val = float(g[g["IDFirm"].isin(STEALTH_SMART_BROKERS)]["Value"].sum())
             r_val = float(g[g["IDFirm"].isin(STEALTH_RETAIL_BROKERS)]["Value"].sum())
+            tot_turnover = s_val + r_val
+            # Guard against illiquid penny stock false positives
+            if tot_turnover < min_turnover_rp:
+                continue
+
             delta = round(float(s_val / (r_val + 1e-9)), 2)
 
             price_chg = 0.0
@@ -954,6 +959,9 @@ def composite_alpha_ranking(
     scores += (roe.clip(0, 30) / 30.0) * 20.0  # Up to +20 for ROE
     scores += ((per > 0) & (per < 15)).astype(float) * 15.0  # +15 for fair/low PER
     scores -= (der > 3.0).astype(float) * 15.0  # -15 for high debt
+    # Actively penalize capital destruction and operating losses
+    scores -= (roe < 0).astype(float) * 15.0 + ((roe.clip(-50, 0) / -50.0) * 10.0)
+    scores -= (per < 0).astype(float) * 15.0  # -15 for negative earnings
 
     # 2. Foreign Flow factor
     pct_float = (

@@ -147,6 +147,12 @@ def analyze_stock_dividend(
     current_price = float(last_session.get("Close", 0.0))
     listed_shares = float(last_session.get("ListedShares", 0.0))
 
+    # Determine raw DPS and total dividend values from the latest dividend record
+    dps_raw = float(latest_div.get("CashDividenPerSaham", 0.0) or 0.0)
+    dps_mu = str(latest_div.get("CashDividenPerSahamMU", "")).upper().strip()
+    total_div = float(latest_div.get("CashDividenTotal", 0.0) or 0.0)
+    total_mu = str(latest_div.get("CashDividenTotalMU", "")).upper().strip()
+
     # Fundamentals
     ratio_rows = ratios_df[ratios_df["code"] == ticker]
     last_ratio = ratio_rows.iloc[-1] if len(ratio_rows) > 0 else None
@@ -176,46 +182,66 @@ def analyze_stock_dividend(
         if last_ratio is not None and pd.notna(last_ratio.get("priceBV"))
         else 0.0
     )
+    profit_attr_owner = (
+        float(last_ratio["profitAttrOwner"])
+        if last_ratio is not None and pd.notna(last_ratio.get("profitAttrOwner"))
+        else 0.0
+    )
     audit_opinion = str(last_ratio.get("opini", "N/A")) if last_ratio is not None else "N/A"
 
-    # 2. Determine Dividend Per Share (DPS) in IDR
-    dps_raw = float(latest_div.get("CashDividenPerSaham", 0.0) or 0.0)
-    dps_mu = str(latest_div.get("CashDividenPerSahamMU", "")).upper().strip()
-    total_div = float(latest_div.get("CashDividenTotal", 0.0) or 0.0)
-    total_mu = str(latest_div.get("CashDividenTotalMU", "")).upper().strip()
-
-    dps_idr = 0.0
-    # Prioritize Total Cash Dividend / Listed Shares when total is available
+    # Convert Raw DPS to IDR, handling USD and prioritizing Total Dividend / Shares
+    # Raw DPS heuristics (dividing by 1000/100) have been removed.
+    # This `latest_dps_tranche` is for the latest dividend tranche, not annualized.
+    latest_dps_tranche = 0.0
     if total_div > 0 and listed_shares > 0:
-        total_idr = total_div * (usd_rate if total_mu == "USD" else 1.0)
-        dps_idr = total_idr / listed_shares
+        total_idr_amount = total_div * (usd_rate if total_mu == "USD" else 1.0)
+        latest_dps_tranche = total_idr_amount / listed_shares
     elif dps_raw > 0:
         if dps_mu == "USD":
-            # Sanity check: if dps_raw * usd_rate > current_price, dps_raw was likely in cents or total
-            raw_converted = dps_raw * usd_rate
-            if current_price > 0 and raw_converted > current_price * 0.6:
-                dps_idr = raw_converted / 100.0  # cents conversion
-            else:
-                dps_idr = raw_converted
+            latest_dps_tranche = dps_raw * usd_rate  # Convert USD to IDR
         else:
-            # IDR sanity check
-            if current_price > 0 and dps_raw > current_price * 0.7:
-                dps_idr = dps_raw / 1000.0
-            else:
-                dps_idr = dps_raw
+            latest_dps_tranche = dps_raw  # Assume IDR
 
-    # Yield
-    div_yield_pct = (dps_idr / current_price * 100.0) if current_price > 0 else 0.0
+    # Aggregate all dividends for annualized DPS based on the latest fiscal year
+    annualized_dps = 0.0
+    if current_price > 0:
+        latest_fiscal_year = 0
+        if divs:
+            latest_fiscal_year = int(divs[0].get("TahunBuku", 0))
 
-    # Dividend Payout Ratio (DPR)
-    if eps > 0 and dps_idr > 0:
-        dpr_pct = (dps_idr / eps) * 100.0
-    elif total_div > 0 and last_ratio is not None and pd.notna(last_ratio.get("profitAttrOwner")):
-        profit = float(last_ratio["profitAttrOwner"])
-        total_idr = total_div * (usd_rate if total_mu == "USD" else 1.0)
-        dpr_pct = (total_idr / profit * 100.0) if profit > 0 else 0.0
+        # Filter for the latest fiscal year. This assumes dividends are grouped by fiscal year.
+        current_year_divs = [d for d in divs if int(d.get("TahunBuku", 0)) == latest_fiscal_year]
+
+        for div_record in current_year_divs:
+            div_raw_record = float(div_record.get("CashDividenPerSaham", 0.0) or 0.0)
+            div_mu_record = str(div_record.get("CashDividenPerSahamMU", "")).upper().strip()
+            div_total_record = float(div_record.get("CashDividenTotal", 0.0) or 0.0)
+            div_total_mu_record = str(div_record.get("CashDividenTotalMU", "")).upper().strip()
+
+            dps_tranche = 0.0
+            if div_total_record > 0 and listed_shares > 0:
+                total_tranche_idr = div_total_record * (usd_rate if div_total_mu_record == "USD" else 1.0)
+                dps_tranche = total_tranche_idr / listed_shares
+            elif div_raw_record > 0:
+                if div_mu_record == "USD":
+                    dps_tranche = div_raw_record * usd_rate
+                else:
+                    dps_tranche = div_raw_record
+            annualized_dps += dps_tranche
+
+    # Calculate yield and DPR based on annualized DPS
+    div_yield_pct = (annualized_dps / current_price * 100.0) if current_price > 0 else 0.0
+
+    if eps > 0 and annualized_dps > 0:
+        dpr_pct = (annualized_dps / eps) * 100.0
+    elif profit_attr_owner > 0 and annualized_dps > 0:
+        # Fallback to profit attributed to owner if EPS not available or zero
+        dpr_pct = (annualized_dps * listed_shares / profit_attr_owner) * 100.0
     else:
         dpr_pct = 0.0
+
+
+
 
     # 3. Market Flow & Technical Indicators
     recent_sessions = stock_rows.tail(window_days)
@@ -351,15 +377,16 @@ def analyze_stock_dividend(
         )
 
     # Ex-Date Expected Drop
-    expected_ex_drop_rp = dps_idr
-    expected_ex_drop_pct = div_yield_pct
+    expected_ex_drop_rp = latest_dps_tranche
+    expected_ex_drop_pct = (latest_dps_tranche / current_price * 100.0) if current_price > 0 else 0.0
 
     return {
         "ticker": ticker,
         "company_name": company_name,
         "has_dividend": True,
         "current_price": current_price,
-        "dps_idr": round(dps_idr, 2),
+        "dps_idr": round(latest_dps_tranche, 2),  # This is the latest tranche DPS
+        "annualized_dps": round(annualized_dps, 2),
         "dividend_yield_pct": round(div_yield_pct, 2),
         "expected_ex_date_drop_rp": round(expected_ex_drop_rp, 2),
         "expected_ex_date_drop_pct": round(expected_ex_drop_pct, 2),

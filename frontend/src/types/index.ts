@@ -132,9 +132,18 @@ export interface Company {
   price?: number;
   daily_change?: number;
   previous_price?: number;
-  dps?: number | null;
-  yield?: number | null;
-  score: ScoreBreakdown;
+  // New/Updated Dividend Fields
+  dps?: number | null; // Latest DPS tranche
+  annualized_dps?: number | null; // Sum of DPS for the year
+  dividend_yield_pct?: number | null; // Calculated based on annualized_dps
+  dividend_trap_score?: number | null;
+  dividend_trap_tier?: string | null;
+
+  // New/Updated Financial & Scoring Fields
+  score: ScoreBreakdown; // This object is still relevant for AlphaHub
+  AlphaScore?: number; // The new top-level score from composite_alpha_ranking
+  latest_fs_date?: string; // Date of the latest financial statement
+
   board_members?: BoardMember[];
   directors?: BoardMember[];
   commissioners?: BoardMember[];
@@ -144,7 +153,9 @@ export interface Company {
   market_cap?: number;
   is_blue_chip?: boolean;
   conglomerate?: string | null;
-  // Forensic & Intellect Compounder Intelligence
+  board_centrality?: number | null; // For Corporate Governance & Group
+
+  // Forensic & Intellect Compounder Intelligence (already present)
   is_value_trap?: boolean;
   forensic_flags?: string[];
   forensic_reasons?: string[];
@@ -157,6 +168,27 @@ export interface Company {
   dca_rating?: string;
   intellect_badges?: string[];
   ai_thesis?: string;
+
+  // Nested objects for smart money and fundamentals
+  smart_money?: {
+    institutional_regime?: string;
+    smart_money_delta?: number;
+    broker_dominance?: string;
+    nff_5d_rp?: number;
+    nff_20d_rp?: number;
+    foreign_share_pct?: number;
+    runup_20d_pct?: number;
+    rsi_14?: number;
+  };
+  fundamentals?: {
+    eps?: number;
+    dpr_pct?: number;
+    per?: number;
+    pbv?: number;
+    roe_pct?: number;
+    der?: number;
+    audit_opinion?: string;
+  };
 }
 
 export interface InsiderHolding {
