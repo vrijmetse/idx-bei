@@ -1078,18 +1078,29 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
               const chgPct = (c as any).daily_change_pct ?? stealthMatch?.PriceChangePct ?? (c.previous_price && c.previous_price > 0 ? (chg / c.previous_price) * 100 : 0);
               const starred = isStarred(c.code);
 
-              // Plain English verdict
+              // Plain English verdict derived strictly from quantitative fundamentals
               const isStealth = stealthAnomalies.some((a) => a.StockCode === c.code && a.Signal === 'STEALTH_ACCUMULATION');
               const isTrap = stealthAnomalies.some((a) => a.StockCode === c.code && a.Signal === 'RETAIL_TRAP');
-              const isGoodDiv = (c.yield ?? 0) >= 5.0;
+              const isGoodDiv = (c.yield ?? c.dividend_yield_pct ?? 0) >= 5.0 || (divMatch?.DividendYield ?? 0) >= 5.0;
+              const isLossOrTrap = c.is_value_trap || (c.roe != null && c.roe < 0) || (c.npm != null && c.npm < 0) || isTrap;
+              const isPrime = c.dca_verdict === 'PRIME_DCA' || (c.compounder_score ?? 0) >= 70;
+              const isAcc = c.dca_verdict === 'ACCUMULATE' || ((c.compounder_score ?? 0) >= 50 && (c.roe ?? 0) >= 12.0);
 
-              let verdictBadge = { text: 'Quality Compounder', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' };
-              if (isStealth) {
+              let verdictBadge = { text: 'Neutral / Watchlist', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' };
+              if (isLossOrTrap) {
+                verdictBadge = { text: 'Danger • Value Trap / Loss', color: '#f87171', bg: 'rgba(239, 68, 68, 0.2)' };
+              } else if (isStealth) {
                 verdictBadge = { text: 'Smart Money Accumulation', color: '#34d399', bg: 'rgba(16, 185, 129, 0.2)' };
-              } else if (isTrap) {
-                verdictBadge = { text: 'Retail Trap - Avoid', color: '#f87171', bg: 'rgba(239, 68, 68, 0.2)' };
+              } else if (isPrime) {
+                verdictBadge = { text: '⭐ Prime DCA Compounder', color: '#10b981', bg: 'rgba(16, 185, 129, 0.2)' };
               } else if (isGoodDiv) {
                 verdictBadge = { text: 'Safe Cashflow Gem', color: '#facc15', bg: 'rgba(234, 179, 8, 0.2)' };
+              } else if (isAcc) {
+                verdictBadge = { text: 'Layak Koleksi (Accumulate)', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' };
+              } else if (c.is_undervalued || c.valuation_status === 'SECTOR_UNDERVALUED') {
+                verdictBadge = { text: 'Undervalued Quality', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.15)' };
+              } else if (c.dca_verdict === 'SPECULATIVE') {
+                verdictBadge = { text: 'Spekulatif / Watchlist', color: '#fb923c', bg: 'rgba(251, 146, 60, 0.15)' };
               }
 
               return (
