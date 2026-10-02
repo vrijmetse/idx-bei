@@ -198,7 +198,11 @@ def analyze_stock_dividend(
         latest_dps_tranche = total_idr_amount / listed_shares
     elif dps_raw > 0:
         if dps_mu == "USD":
-            latest_dps_tranche = dps_raw * usd_rate  # Convert USD to IDR
+            # Guard against IDX disclosure unit quirks where DPS was reported in IDR or cents
+            if current_price > 0 and (dps_raw * usd_rate > current_price * 1.5) and dps_raw <= current_price:
+                latest_dps_tranche = dps_raw
+            else:
+                latest_dps_tranche = dps_raw * usd_rate
         else:
             latest_dps_tranche = dps_raw  # Assume IDR
 
@@ -224,7 +228,10 @@ def analyze_stock_dividend(
                 dps_tranche = total_tranche_idr / listed_shares
             elif div_raw_record > 0:
                 if div_mu_record == "USD":
-                    dps_tranche = div_raw_record * usd_rate
+                    if current_price > 0 and (div_raw_record * usd_rate > current_price * 1.5) and div_raw_record <= current_price:
+                        dps_tranche = div_raw_record
+                    else:
+                        dps_tranche = div_raw_record * usd_rate
                 else:
                     dps_tranche = div_raw_record
             annualized_dps += dps_tranche

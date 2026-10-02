@@ -411,25 +411,37 @@ export const ChartTab: React.FC<ChartTabProps> = ({
   const priceNum = Number(currentPrice);
   const roeVal = company?.roe ?? 0;
   const pbvVal = company?.pbv ?? company?.price_bv ?? 0;
-  const yieldVal = company?.yield ?? 0;
+  const yieldVal = company?.yield ?? company?.dividend_yield_pct ?? 0;
 
   // Decision verdict
   let actionVerdict = {
-    title: 'ACCUMULATE ON WEAKNESS',
-    badge: 'BUY ZONE',
-    bg: 'rgba(16, 185, 129, 0.12)',
-    border: '#10b981',
-    color: '#34d399',
-    risk: 'Low Risk',
-    riskColor: '#34d399',
-    explanation: 'Institutional positioning is steady. High risk-reward ratio for gradual accumulation on pullbacks.',
+    title: 'NEUTRAL ZONE • CONSOLIDATING',
+    badge: 'HOLD / WAIT',
+    bg: 'rgba(148, 163, 184, 0.12)',
+    border: '#64748b',
+    color: '#cbd5e1',
+    risk: 'Moderate Risk',
+    riskColor: '#cbd5e1',
+    explanation: 'Institutional flows and price action are currently balanced. Await clear volume confirmation or margin expansion before scaling.',
   };
 
+  const isTrapOrLoss = company?.is_value_trap || (company?.roe != null && company.roe < 0) || (company?.npm != null && company.npm < 0);
   const isRetailPump = rsiStatus === 'Overbought' || (dailyChange > 0 && netForeign < 0 && Math.abs(netForeign) > foreignBuy * 2);
   const isHighCashflow = yieldVal >= 5.0 && (roeVal >= 12.0 || company?.is_blue_chip);
   const isStrongAccumulation = netForeign > 0 && (roeVal >= 15.0 || company?.is_blue_chip);
 
-  if (isRetailPump) {
+  if (isTrapOrLoss) {
+    actionVerdict = {
+      title: 'FORENSIC ALERT • VALUE TRAP / LOSS',
+      badge: 'AVOID / HIGH RISK',
+      bg: 'rgba(239, 68, 68, 0.15)',
+      border: '#ef4444',
+      color: '#f87171',
+      risk: 'Critical Risk',
+      riskColor: '#f87171',
+      explanation: `Company is operating at a net loss (ROE ${roeVal ? `${roeVal.toFixed(1)}%` : 'negative'}) or flagged for forensic accounting risk. Do not DCA.`,
+    };
+  } else if (isRetailPump) {
     actionVerdict = {
       title: 'RETAIL TRAP • DO NOT CHASE',
       badge: 'AVOID / DANGER',
@@ -449,7 +461,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
       color: '#34d399',
       risk: 'Low Risk',
       riskColor: '#34d399',
-      explanation: 'Big institutional brokers are quietly soaking up market float with high capital efficiency (ROE ' + (roeVal ? `${roeVal}%` : '18%') + '). Ideal for multi-month compounding.',
+      explanation: 'Big institutional brokers are quietly soaking up market float with high capital efficiency (ROE ' + (roeVal ? `${roeVal.toFixed(1)}%` : 'positive') + '). Ideal for multi-month compounding.',
     };
   } else if (isHighCashflow) {
     actionVerdict = {

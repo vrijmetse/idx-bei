@@ -133,6 +133,40 @@ class TestDividendQuant(unittest.TestCase):
             self.assertNotAlmostEqual(result["annualized_dps"], 20.0, delta=0.1) # Should not be 20.0 (if heuristic was applied)
             self.assertAlmostEqual(result["annualized_dps"], 20000.0, delta=0.1) # Should be the raw value, for now
 
+    def test_usd_quirk_handling_indy_pnin(self):
+        """Verify that when a company marks MU='USD' but raw DPS is already in IDR (or small number), it does not multiply by USD rate into 7000% yield."""
+        mock_details = {
+            "INDY": {
+                "Profiles": [{"NamaEmiten": "Indika Energy Tbk", "ListedShares": 5210000000}],
+                "Dividen": [
+                    {
+                        "CashDividenPerSaham": 10.0,
+                        "CashDividenPerSahamMU": "USD",
+                        "CashDividenTotal": 0.0,
+                        "CashDividenTotalMU": "",
+                        "TahunBuku": "2025",
+                        "TanggalCum": "2026-06-02",
+                    }
+                ],
+            }
+        }
+        mock_stock = pd.DataFrame([
+            {
+                "StockCode": "INDY",
+                "Date": datetime(2026, 10, 2),
+                "Close": 2570.0,
+                "Previous": 2550.0,
+                "ListedShares": 5210000000,
+            }
+        ])
+        mock_ratios = pd.DataFrame([
+            {"code": "INDY", "fsDate": datetime(2025, 12, 31), "eps": 175.0, "profitAttrOwner": 911000000000.0}
+        ])
+        with patch("idx.dividend.get_usd_idr_rate", return_value=17000.0):
+            res = analyze_stock_dividend("INDY", details_dict=mock_details, stock_df=mock_stock, ratios_df=mock_ratios)
+            self.assertEqual(res["annualized_dps"], 10.0)
+            self.assertAlmostEqual(res["dividend_yield_pct"], 0.39, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()

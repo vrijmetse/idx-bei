@@ -200,6 +200,40 @@ def get_latest_market_prices() -> dict[str, dict[str, Any]]:
         return _latest_prices_cache or {}
 
 
+_dividend_summary_cache: dict[str, dict[str, Any]] = {}
+_dividend_summary_ts: float = 0.0
+
+
+def get_dividend_summary_map() -> dict[str, dict[str, Any]]:
+    """Return dictionary mapping stock code to precomputed dividend metrics."""
+    global _dividend_summary_cache, _dividend_summary_ts
+    now = time.time()
+    if _dividend_summary_cache and (now - _dividend_summary_ts) < 3600.0:
+        return _dividend_summary_cache
+
+    screen_file = os.path.join(DATA_DIR, "dividend_screen.json")
+    if os.path.exists(screen_file):
+        try:
+            records = load_json(screen_file)
+            res = {}
+            for r in records:
+                code = r.get("StockCode") or r.get("Ticker")
+                if code:
+                    res[code] = {
+                        "yield": r.get("DividendYield") or r.get("Yield%"),
+                        "dps": r.get("AnnualizedDPS") or r.get("DPS_IDR"),
+                        "dpr": r.get("PayoutRatio") or r.get("DPR%"),
+                        "trap_score": r.get("TrapRiskScore") or r.get("TrapScore"),
+                        "verdict": r.get("Recommendation") or r.get("Verdict"),
+                    }
+            _dividend_summary_cache = res
+            _dividend_summary_ts = now
+            return _dividend_summary_cache
+        except Exception as e:
+            logger.warning(f"Could not load dividend screen file: {e}")
+    return {}
+
+
 @app.get("/api/dashboard-data", tags=["Market Data"])
 async def get_dashboard_data():
     """Return unified dashboard dataset containing companies with prices, super-insiders, and conglomerates."""
@@ -207,6 +241,7 @@ async def get_dashboard_data():
     if os.path.exists(alpha_file):
         data = load_json(alpha_file)
         prices_map = get_latest_market_prices()
+        div_map = get_dividend_summary_map()
         from idx.compounder import evaluate_forensics
 
         for c in data.get("companies", []):
@@ -217,6 +252,15 @@ async def get_dashboard_data():
                 c["previous_price"] = pm["previous_price"]
                 c["daily_change"] = pm["daily_change"]
                 c["daily_change_pct"] = pm["daily_change_pct"]
+
+            if code in div_map:
+                dm = div_map[code]
+                c["dividend_yield_pct"] = dm["yield"]
+                c["yield"] = dm["yield"]
+                c["annualized_dps"] = dm["dps"]
+                c["dps"] = dm["dps"]
+                if not c.get("dividend_trap_score"):
+                    c["dividend_trap_score"] = dm["trap_score"]
 
             forensics = evaluate_forensics(c)
             if forensics.get("is_value_trap"):
@@ -234,6 +278,7 @@ async def get_companies():
     if os.path.exists(alpha_file):
         data = load_json(alpha_file)
         prices_map = get_latest_market_prices()
+        div_map = get_dividend_summary_map()
         from idx.compounder import evaluate_forensics
 
         companies = data.get("companies", [])
@@ -245,6 +290,15 @@ async def get_companies():
                 c["previous_price"] = pm["previous_price"]
                 c["daily_change"] = pm["daily_change"]
                 c["daily_change_pct"] = pm["daily_change_pct"]
+
+            if code in div_map:
+                dm = div_map[code]
+                c["dividend_yield_pct"] = dm["yield"]
+                c["yield"] = dm["yield"]
+                c["annualized_dps"] = dm["dps"]
+                c["dps"] = dm["dps"]
+                if not c.get("dividend_trap_score"):
+                    c["dividend_trap_score"] = dm["trap_score"]
 
             forensics = evaluate_forensics(c)
             if forensics.get("is_value_trap"):
@@ -386,10 +440,48 @@ async def get_stock_data(ticker: str, limit: int = 120):
     except Exception:
         pass
 
+    # Look up profile, financials, and decision metrics
+    profile = {}
+    financials = {}
+    decision = {}
+    try:
+        alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
+        if os.path.exists(alpha_file):
+            c_data = load_json(alpha_file)
+            for c in c_data.get("companies", []):
+                if c.get("code") == ticker:
+                    profile = {
+                        "name": c.get("name"),
+                        "sector": c.get("sector"),
+                        "conglomerate": c.get("conglomerate"),
+                    }
+                    div_map = get_dividend_summary_map()
+                    d_info = div_map.get(ticker, {})
+                    financials = {
+                        "per": c.get("per"),
+                        "price_bv": c.get("price_bv") or c.get("pbv"),
+                        "roe": c.get("roe"),
+                        "de_ratio": c.get("de_ratio"),
+                        "dividend_yield_pct": d_info.get("yield") or c.get("dividend_yield_pct"),
+                        "annualized_dps": d_info.get("dps") or c.get("annualized_dps"),
+                    }
+                    decision = {
+                        "compounder_score": c.get("compounder_score"),
+                        "dca_verdict": c.get("dca_verdict"),
+                        "dca_rating": c.get("dca_rating"),
+                        "is_value_trap": c.get("is_value_trap", False),
+                    }
+                    break
+    except Exception:
+        pass
+
     return {
         "ticker": ticker,
         "records": records,
         "latest": latest,
+        "profile": profile,
+        "financials": financials,
+        "decision": decision,
     }
 
 
@@ -625,11 +717,22 @@ async def get_dividend_analysis(ticker: str):
 
 
 @app.get("/api/dividend", tags=["Dividends"])
+@app.get("/api/dividend/screen", tags=["Dividends"])
 async def screen_dividends(min_yield: float = 3.0, year: str = "2026", limit: int = 25):
     from idx.dividend import screen_upcoming_dividends
 
     df = screen_upcoming_dividends(min_yield=min_yield, year_filter=year, limit=limit)
-    return clean_dict_records(df.to_dict("records"))
+    records = df.to_dict("records")
+    for r in records:
+        r["StockCode"] = r.get("Ticker")
+        r["StockName"] = r.get("Name")
+        r["DividendYield"] = r.get("Yield%")
+        r["AnnualizedDPS"] = r.get("DPS_IDR")
+        r["DPS"] = r.get("DPS_IDR")
+        r["PayoutRatio"] = r.get("DPR%")
+        r["TrapRiskScore"] = r.get("TrapScore")
+        r["Recommendation"] = r.get("Verdict")
+    return clean_dict_records(records)
 
 
 @app.get("/api/drift", tags=["Ownership"])
