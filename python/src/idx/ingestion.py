@@ -748,20 +748,71 @@ async def run_async_ingestion_job(
         else:
             raise ValueError(f"Unknown job type: {job_type}")
 
-        job_record["status"] = "completed"
-        job_record["progress_pct"] = 100
+        # Rigorous completion evaluation: never mask scraper errors as success
         job_record["completed_at"] = datetime.datetime.now().isoformat()
-        job_record["message"] = f"{job_type.capitalize()} completed successfully."
+        job_record["progress_pct"] = 100
+
+        if job_type == "daily":
+            res = job_record.get("results", {})
+            failed_keys = [
+                k
+                for k, v in res.items()
+                if (isinstance(v, dict) and v.get("status") == "error") or v == "error"
+            ]
+            if len(failed_keys) >= 3:
+                job_record["status"] = "failed"
+                job_record["message"] = "Daily ingestion failed: IDX exchange data unavailable or blocked by rate limit (HTTP 429)."
+            elif len(failed_keys) > 0:
+                job_record["status"] = "completed_with_warnings"
+                job_record["message"] = f"Daily ingestion finished with warnings: {', '.join(failed_keys)} failed."
+            else:
+                job_record["status"] = "completed"
+                job_record["message"] = "Daily market-close ingestion completed successfully."
+
+        elif job_type == "backfill":
+            res_s = job_record["results"].get("stock_summary", {})
+            res_b = job_record["results"].get("broker_summary", {})
+            res_i = job_record["results"].get("index_summary", {})
+
+            total_fetched = res_s.get("dates_fetched", 0) + res_b.get("dates_fetched", 0) + res_i.get("dates_fetched", 0)
+            total_skipped = res_s.get("dates_skipped", 0) + res_b.get("dates_skipped", 0) + res_i.get("dates_skipped", 0)
+            total_errors = res_s.get("errors", 0) + res_b.get("errors", 0) + res_i.get("errors", 0)
+
+            if total_errors > 0 and total_fetched == 0:
+                job_record["status"] = "failed"
+                job_record["message"] = (
+                    f"Backfill failed: {total_errors} sessions blocked by rate limit (HTTP 429) "
+                    "or trading summary not published by IDX yet."
+                )
+            elif total_errors > 0:
+                job_record["status"] = "completed_with_warnings"
+                job_record["message"] = (
+                    f"Backfill finished with {total_errors} errors "
+                    f"({total_fetched} dates fetched, {total_skipped} skipped)."
+                )
+            else:
+                job_record["status"] = "completed"
+                job_record["message"] = f"Backfill completed successfully ({total_fetched} dates fetched, {total_skipped} skipped)."
 
         if broadcast_callback:
             try:
-                await broadcast_callback(
-                    {
-                        "type": "ingestion_completed",
-                        "job_id": job_id,
-                        "results": job_record["results"],
-                    }
+                event_type = (
+                    "ingestion_error"
+                    if job_record["status"] == "failed"
+                    else "ingestion_warning"
+                    if job_record["status"] == "completed_with_warnings"
+                    else "ingestion_completed"
                 )
+                payload = {
+                    "type": event_type,
+                    "job_id": job_id,
+                    "status": job_record["status"],
+                    "message": job_record["message"],
+                    "results": job_record.get("results"),
+                }
+                if job_record["status"] == "failed":
+                    payload["error"] = job_record["message"]
+                await broadcast_callback(payload)
             except Exception:
                 pass
 

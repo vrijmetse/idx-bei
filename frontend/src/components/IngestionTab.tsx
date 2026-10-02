@@ -3,6 +3,7 @@ import {
   Database,
   Calendar,
   AlertTriangle,
+  AlertCircle,
   CheckCircle2,
   RefreshCw,
   Copy,
@@ -11,6 +12,7 @@ import {
   Layers,
   TrendingUp,
   Play,
+  X,
 } from 'lucide-react';
 import { fetchIngestionStatus, triggerIngestion } from '../services/api';
 import type { IngestionStatusResponse, BackfillTier } from '../types';
@@ -57,11 +59,24 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
       });
     } else if (lastLiveEvent.type === 'ingestion_completed') {
       setActiveJob(null);
-      setTriggerMessage('Ingestion task completed successfully!');
+      if (lastLiveEvent.status === 'completed_with_warnings') {
+        setTriggerMessage(null);
+        setError(`Ingestion warning: ${lastLiveEvent.message}`);
+      } else {
+        setError(null);
+        setTriggerMessage(lastLiveEvent.message || 'Ingestion task completed successfully!');
+      }
+      loadStatus();
+    } else if (lastLiveEvent.type === 'ingestion_warning') {
+      setActiveJob(null);
+      setTriggerMessage(null);
+      setError(`Ingestion warning: ${lastLiveEvent.message}`);
       loadStatus();
     } else if (lastLiveEvent.type === 'ingestion_error') {
       setActiveJob(null);
-      setError(`Ingestion error: ${lastLiveEvent.error}`);
+      setTriggerMessage(null);
+      setError(`Ingestion error: ${lastLiveEvent.error || lastLiveEvent.message}`);
+      loadStatus();
     }
   }, [lastLiveEvent, loadStatus]);
 
@@ -75,11 +90,19 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
           const job = await resp.json();
           if (job.status === 'completed') {
             setActiveJob(null);
+            setError(null);
             setTriggerMessage(job.message || 'Ingestion completed successfully.');
+            loadStatus();
+          } else if (job.status === 'completed_with_warnings') {
+            setActiveJob(null);
+            setTriggerMessage(null);
+            setError(`Ingestion completed with warnings: ${job.message}`);
             loadStatus();
           } else if (job.status === 'failed') {
             setActiveJob(null);
+            setTriggerMessage(null);
             setError(`Job failed: ${job.message}`);
+            loadStatus();
           } else {
             setActiveJob({
               id: job.job_id,
@@ -104,10 +127,10 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
   const handleTriggerDaily = async () => {
     try {
       setIsTriggering(true);
+      setError(null);
       setTriggerMessage(null);
       const res = await triggerIngestion({ job_type: 'daily' });
       setActiveJob({ id: res.job_id, progress: 10, message: 'Daily market ingestion scheduled...' });
-      setTriggerMessage('Daily market close ingestion started in background.');
     } catch (err: any) {
       setError(err.message || 'Failed to trigger daily ingestion');
     } finally {
@@ -117,11 +140,13 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
 
   const handleTriggerTier = async (tier: BackfillTier) => {
     if (tier.trading_days_to_fetch === 0) {
+      setError(null);
       setTriggerMessage(`${tier.name} is already 100% up to date with zero missing trading sessions!`);
       return;
     }
     try {
       setIsTriggering(true);
+      setError(null);
       setTriggerMessage(null);
       const startStr = tier.target_range.start.replace(/-/g, '');
       const endStr = tier.target_range.end.replace(/-/g, '');
@@ -129,14 +154,13 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
         job_type: 'backfill',
         start_date: startStr,
         end_date: endStr,
-        concurrency: 8,
+        concurrency: 4,
       });
       setActiveJob({
         id: res.job_id,
         progress: 10,
         message: `Backfill ${tier.name} started in background...`,
       });
-      setTriggerMessage(`Backfill job (${startStr} → ${endStr}) started in background.`);
     } catch (err: any) {
       setError(err.message || 'Failed to trigger backfill');
     } finally {
@@ -323,6 +347,43 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
               }}
             />
           </div>
+        </div>
+      )}
+
+      {error && !activeJob && (
+        <div
+          style={{
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '12px',
+            padding: '0.85rem 1.25rem',
+            color: '#f87171',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.5rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <AlertCircle size={16} style={{ flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#f87171',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
 
