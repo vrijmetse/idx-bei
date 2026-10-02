@@ -565,8 +565,8 @@ export const PowerMapTab: React.FC<PowerMapTabProps> = ({
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem', margin: '0.75rem 0 1rem' }}>
-                      <div>Median ROE: <strong style={{ color: '#10b981' }}>{group.median_roe || group.average_roe || 18}%</strong></div>
-                      <div>Avg PBV: <strong>{group.average_pbv || 2.4}x</strong></div>
+                      <div>Median ROE: <strong style={{ color: (group.median_roe ?? group.average_roe ?? 0) >= 15 ? '#10b981' : (group.median_roe ?? group.average_roe ?? 0) < 0 ? '#ef4444' : '#cbd5e1' }}>{group.median_roe != null ? `${group.median_roe}%` : group.average_roe != null ? `${group.average_roe}%` : '—'}</strong></div>
+                      <div>Avg PBV: <strong>{group.average_pbv != null ? `${Number(group.average_pbv).toFixed(2)}x` : '—'}</strong></div>
                     </div>
 
                     <h5 style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', color: '#94a3b8' }}>Listed Entities</h5>

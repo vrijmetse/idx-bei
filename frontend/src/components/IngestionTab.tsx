@@ -106,7 +106,7 @@ export const IngestionTab: React.FC<IngestionTabProps> = ({ lastLiveEvent }) => 
           } else {
             setActiveJob({
               id: job.job_id,
-              progress: job.progress_pct || 50,
+              progress: job.progress_pct ?? 0,
               message: job.message || 'Processing ingestion...',
             });
           }

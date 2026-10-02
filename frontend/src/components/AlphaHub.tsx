@@ -740,7 +740,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
                   >
                     <strong style={{ color: '#f8fafc', fontSize: '0.9rem' }}>{item.StockCode}</strong>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#34d399' }}>
-                      <span>Net +Rp {item.NetForeignFlowRpB || 1.2}B</span>
+                      <span>Net {item.NetForeignFlowRpB != null ? `${item.NetForeignFlowRpB > 0 ? '+' : ''}Rp ${item.NetForeignFlowRpB}B` : '—'}</span>
                       <ArrowRight size={12} />
                     </div>
                   </div>
