@@ -31,6 +31,35 @@ from idx.ingestion import (
 )
 from idx.signals import broker_concentration_screen, build_briefing, compute_technical_indicators
 
+def clean_record(r: dict[str, Any]) -> dict[str, Any]:
+    import math
+
+    out = {}
+    for k, v in r.items():
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            out[k] = None
+        elif isinstance(v, dict):
+            out[k] = clean_record(v)
+        elif isinstance(v, list):
+            out[k] = [
+                clean_record(item)
+                if isinstance(item, dict)
+                else (
+                    None
+                    if isinstance(item, float) and (math.isnan(item) or math.isinf(item))
+                    else item
+                )
+                for item in v
+            ]
+        else:
+            out[k] = v
+    return out
+
+
+def clean_dict_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [clean_record(r) for r in records]
+
+
 app = FastAPI(
     title="IDX-BEI Quantitative & Microservice API",
     description="High-performance async REST & WebSocket API for Indonesia Stock Exchange data and quantitative intelligence.",
@@ -225,8 +254,43 @@ async def get_stock_data(ticker: str, limit: int = 120):
     clean_df = tech.replace([np.inf, -np.inf], np.nan).where(pd.notnull(tech), None)
     clean_df["Date"] = clean_df["Date"].astype(str)
 
-    records = clean_df.to_dict(orient="records")
+    records = clean_dict_records(clean_df.to_dict(orient="records"))
     latest = records[-1] if records else {}
+
+    # Augment with latest intraday candle from Yahoo Finance if today's EOD is pending
+    try:
+        import datetime
+        import yfinance as yf
+
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        if records and records[-1].get("time") != today_str:
+            yf_stock = yf.Ticker(f"{ticker}.JK")
+            hist = yf_stock.history(period="1d", interval="1d")
+            if not hist.empty:
+                last_row = hist.iloc[-1]
+                intraday_date = last_row.name.strftime("%Y-%m-%d")
+                if intraday_date == today_str:
+                    intraday_record = {
+                        "Date": today_str,
+                        "time": today_str,
+                        "StockCode": ticker,
+                        "open": float(last_row["Open"]),
+                        "high": float(last_row["High"]),
+                        "low": float(last_row["Low"]),
+                        "close": float(last_row["Close"]),
+                        "volume": float(last_row["Volume"]),
+                        "Close": float(last_row["Close"]),
+                        "TrendRegime": records[-1].get("TrendRegime", "NEUTRAL"),
+                        "EMA20": records[-1].get("EMA20"),
+                        "EMA50": records[-1].get("EMA50"),
+                        "EMA200": records[-1].get("EMA200"),
+                        "RSI14": records[-1].get("RSI14"),
+                    }
+                    records.append(intraday_record)
+                    latest = intraday_record
+    except Exception:
+        pass
+
     return {
         "ticker": ticker,
         "records": records,
@@ -416,7 +480,7 @@ async def get_broker_flow(date: str | None = None, top_k: int = 10):
         raise HTTPException(status_code=404, detail="Broker summary data not available.")
 
     summary, top_df = broker_concentration_screen(df, on_date=date, top_k=top_k)
-    return {"summary": summary, "top_brokers": top_df.to_dict("records")}
+    return {"summary": summary, "top_brokers": clean_dict_records(top_df.to_dict("records"))}
 
 
 @app.get("/api/peers/{ticker}", tags=["Fundamental"])
@@ -430,7 +494,7 @@ async def get_peers(ticker: str):
 
     df = pd.read_parquet(ratios_path)
     latest = df.sort_values("fsDate").groupby("code").last().reset_index()
-    return latest.to_dict("records")
+    return clean_dict_records(latest.to_dict("records"))
 
 
 @app.get("/api/dividend/{ticker}", tags=["Dividends"])
@@ -448,7 +512,7 @@ async def screen_dividends(min_yield: float = 3.0, year: str = "2026", limit: in
     from idx.dividend import screen_upcoming_dividends
 
     df = screen_upcoming_dividends(min_yield=min_yield, year_filter=year, limit=limit)
-    return df.to_dict("records")
+    return clean_dict_records(df.to_dict("records"))
 
 
 @app.get("/api/drift", tags=["Ownership"])
@@ -472,7 +536,7 @@ async def get_network(ticker: str):
 @app.get("/api/graph/centrality", tags=["Knowledge Graph"])
 async def get_centrality(top_n: int = 20):
     df = calculate_board_centrality(top_n=top_n)
-    return df.to_dict(orient="records")
+    return clean_dict_records(df.to_dict(orient="records"))
 
 
 @app.get("/api/graph/cross-holdings", tags=["Knowledge Graph"])
@@ -504,7 +568,7 @@ async def execute_sql(req: SQLQueryRequest):
 
     try:
         res_df = con.execute(sql).fetchdf()
-        return res_df.head(req.limit).to_dict(orient="records")
+        return clean_dict_records(res_df.head(req.limit).to_dict(orient="records"))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -541,7 +605,7 @@ async def get_stealth_accumulation(
         "summary": res["summary"],
         "signal": res["signal"],
         "smart_money_delta": res["smart_money_delta"],
-        "anomalies": res["anomalies_df"].to_dict("records"),
+        "anomalies": clean_dict_records(res["anomalies_df"].to_dict("records")),
     }
     set_in_cache(cache_key, result)
     return result
@@ -732,6 +796,56 @@ async def websocket_stream(websocket: WebSocket):
         ws_manager.disconnect(websocket)
     except Exception:
         ws_manager.disconnect(websocket)
+
+
+async def live_price_streamer():
+    """Background worker: streams near-real-time prices for top tickers during market hours."""
+    import datetime
+    import yfinance as yf
+
+    WATCHLIST = ["BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "UNTR", "ICBP", "AMMN", "BREN"]
+    while True:
+        try:
+            if ws_manager.active_connections:
+                now_utc = datetime.datetime.now(datetime.timezone.utc)
+                # WIB is UTC+7
+                wib_hour = (now_utc.hour + 7) % 24
+                wib_weekday = now_utc.weekday()
+                # IDX Trading Sessions: Session 1 (09:00-12:00) & Session 2 (13:30-16:15) Mon-Fri
+                if wib_weekday < 5 and 9 <= wib_hour < 17:
+                    tickers_str = " ".join([f"{t}.JK" for t in WATCHLIST])
+                    data = yf.Tickers(tickers_str)
+                    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+                    for t in WATCHLIST:
+                        stock = data.tickers.get(f"{t}.JK")
+                        if stock:
+                            fi = getattr(stock, "fast_info", None)
+                            if fi and hasattr(fi, "last_price") and fi.last_price is not None:
+                                price = float(fi.last_price)
+                                prev = float(getattr(fi, "previous_close", price))
+                                change = round(price - prev, 2)
+                                event = {
+                                    "type": "price_update",
+                                    "ticker": t,
+                                    "price": price,
+                                    "change": change,
+                                    "ohlc": {
+                                        "time": today_str,
+                                        "open": float(getattr(fi, "open", price)),
+                                        "high": float(getattr(fi, "day_high", price)),
+                                        "low": float(getattr(fi, "day_low", price)),
+                                        "close": price,
+                                    },
+                                }
+                                await ws_manager.broadcast(event)
+        except Exception:
+            pass
+        await asyncio.sleep(20)
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(live_price_streamer())
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8000):
