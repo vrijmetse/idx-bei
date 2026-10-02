@@ -229,6 +229,20 @@ class TestAPI(unittest.TestCase):
         resp_404 = self.client.get("/api/stock/INVALID_ZZZZ/blocks")
         self.assertEqual(resp_404.status_code, 404)
 
+    def test_stock_blocks_bumi_pasar_nego(self):
+        resp = self.client.get("/api/stock/BUMI/blocks")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["ticker"], "BUMI")
+        self.assertGreater(data["non_regular_value_rp"], 1_000_000_000)
+        self.assertGreater(data["total_whale_value_rp"], 0)
+        self.assertGreater(data["smart_accumulation_ratio"], 0)
+        # Every whale block must be >= 1.0B
+        whale_blocks = [b for b in data["blocks"] if b["is_whale"]]
+        self.assertGreaterEqual(len(whale_blocks), 1)
+        for block in whale_blocks:
+            self.assertGreaterEqual(block["value_rp"], 1_000_000_000)
+
 
 if __name__ == "__main__":
     unittest.main()

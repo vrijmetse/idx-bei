@@ -526,8 +526,11 @@ export const ChartTab: React.FC<ChartTabProps> = ({
   }, [blockData, blockTrades]);
 
   const largestTrade = useMemo(() => {
-    if (blockTrades.length === 0) return null;
-    return [...blockTrades].sort((a: BlockTrade, b: BlockTrade) => b.valueRp - a.valueRp)[0];
+    const whales = blockTrades.filter((t: BlockTrade) => t.isWhale);
+    if (whales.length > 0) {
+      return [...whales].sort((a: BlockTrade, b: BlockTrade) => b.valueRp - a.valueRp)[0];
+    }
+    return null;
   }, [blockTrades]);
 
   return (
@@ -994,7 +997,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#facc15' }}>
               Rp {(totalWhaleValue / 1e9).toFixed(2)}B
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Orders ≥ Rp 500M or 2,000 lots</div>
+            <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Verified Institutional Orders ≥ Rp 1.0B</div>
           </div>
 
           <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '10px', padding: '0.85rem 1rem' }}>
@@ -1025,7 +1028,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: '0.9rem', color: '#64748b' }}>—</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>— (No Institutional Blocks Today)</div>
             )}
           </div>
         </div>

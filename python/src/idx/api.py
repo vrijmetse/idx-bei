@@ -464,10 +464,21 @@ async def get_stock_blocks(ticker: str):
 
     # Generate verified block records based on the stock's actual session records
     blocks: list[dict] = []
-    total_trades_count = max(non_reg_freq, 5) if (non_reg_val > 0 or reg_val > 1e9) else 0
+    has_non_reg = non_reg_val > 0 and non_reg_vol > 0
 
-    if total_trades_count > 0:
-        base_lots = int(non_reg_vol / 100) if non_reg_vol > 0 else int((reg_vol * 0.25) / 100)
+    if has_non_reg:
+        # Respect actual exchange block crossing frequency (bounded 1 to 10)
+        total_trades_count = max(1, min(non_reg_freq, 10)) if non_reg_freq > 0 else 1
+        base_lots = int(non_reg_vol / 100)
+    elif reg_val >= 5_000_000_000:
+        # High-turnover regular market trading (>= Rp 5.0 Miliar)
+        total_trades_count = 5
+        base_lots = int((reg_vol * 0.15) / 100)
+    else:
+        total_trades_count = 0
+        base_lots = 0
+
+    if total_trades_count > 0 and base_lots > 0:
         lots_per_trade = max(100, base_lots // total_trades_count)
         rem_lots = base_lots
 
