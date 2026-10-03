@@ -445,8 +445,34 @@ def screen_upcoming_dividends(
     trap_tier: str | None = None,
     year_filter: str = "2026",
     limit: int = 50,
+    use_cache: bool = True,
 ) -> pd.DataFrame:
     """Screens dividend declarations across the entire listed universe."""
+    screen_file = os.path.join(DATA_DIR, "dividend_screen.json")
+    if use_cache and os.path.exists(screen_file):
+        try:
+            records = load_json(screen_file)
+            filtered = []
+            for r in records:
+                cum_date = str(r.get("CumDate") or "")
+                if year_filter and not cum_date.startswith(year_filter):
+                    continue
+                yld = float(r.get("Yield%") or r.get("DividendYield") or 0.0)
+                trap = float(r.get("TrapScore") or r.get("TrapRiskScore") or 0.0)
+                tier = str(r.get("TrapRisk") or "")
+                if yld >= min_yield and trap <= max_trap_score:
+                    if trap_tier and tier.upper() != trap_tier.upper():
+                        continue
+                    filtered.append(r)
+            if filtered:
+                df = pd.DataFrame(filtered)
+                sort_col = "Yield%" if "Yield%" in df.columns else ("DividendYield" if "DividendYield" in df.columns else None)
+                if sort_col:
+                    df = df.sort_values(sort_col, ascending=False)
+                return df.head(limit).reset_index(drop=True)
+        except Exception as e:
+            log.warning(f"Error reading dividend_screen.json cache, falling back to full calculation: {e}")
+
     details_dict = load_json(DETAILS_FILE) if os.path.exists(DETAILS_FILE) else {}
     stock_path = os.path.join(PARQUET_DIR, "stock_summary.parquet")
     stock_df = pd.read_parquet(stock_path) if os.path.exists(stock_path) else pd.DataFrame()

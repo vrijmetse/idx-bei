@@ -886,24 +886,24 @@ async def get_dividend_analysis(ticker: str):
 @app.get("/api/dividend", tags=["Dividends"])
 @app.get("/api/dividend/screen", tags=["Dividends"])
 async def screen_dividends(min_yield: float = 3.0, year: str = "2026", limit: int = 25):
-    from idx.dividend import screen_upcoming_dividends
-
     cache_key = f"dividend_screen:{min_yield}:{year}:{limit}"
-    cached = get_from_cache(cache_key, ttl_seconds=120.0)
+    cached = get_from_cache(cache_key, ttl_seconds=1800.0)
     if cached:
         return cached
+
+    from idx.dividend import screen_upcoming_dividends
 
     df = screen_upcoming_dividends(min_yield=min_yield, year_filter=year, limit=limit)
     records = df.to_dict("records")
     for r in records:
-        r["StockCode"] = r.get("Ticker")
-        r["StockName"] = r.get("Name")
-        r["DividendYield"] = r.get("Yield%")
-        r["AnnualizedDPS"] = r.get("DPS_IDR")
-        r["DPS"] = r.get("DPS_IDR")
-        r["PayoutRatio"] = r.get("DPR%")
-        r["TrapRiskScore"] = r.get("TrapScore")
-        r["Recommendation"] = r.get("Verdict")
+        r["StockCode"] = r.get("Ticker") or r.get("StockCode")
+        r["StockName"] = r.get("Name") or r.get("StockName")
+        r["DividendYield"] = r.get("Yield%") or r.get("DividendYield")
+        r["AnnualizedDPS"] = r.get("DPS_IDR") or r.get("AnnualizedDPS")
+        r["DPS"] = r.get("DPS_IDR") or r.get("DPS")
+        r["PayoutRatio"] = r.get("DPR%") or r.get("PayoutRatio")
+        r["TrapRiskScore"] = r.get("TrapScore") or r.get("TrapRiskScore")
+        r["Recommendation"] = r.get("Verdict") or r.get("Recommendation")
     out = clean_dict_records(records)
     set_in_cache(cache_key, out)
     return out
@@ -1320,6 +1320,9 @@ def prewarm_cache():
         get_all_hydrated_companies()
         get_dividend_summary_map()
         get_stealth_accumulation_map()
+        import asyncio
+        asyncio.run(screen_dividends(min_yield=4.0, year="2026", limit=30))
+        asyncio.run(get_stealth_accumulation(lookback_days=5, min_turnover_rp=1000000000.0))
         logger.info("In-memory caches successfully pre-warmed.")
     except Exception as e:
         logger.warning(f"Error during prewarm_cache: {e}")
