@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 logger = logging.getLogger("idx.api")
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -91,6 +92,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Compress all responses over 1KB (reduces JSON payload bandwidth by 80-87%)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+class CachedStaticFiles(StaticFiles):
+    """StaticFiles that sets immutable 1-year Cache-Control headers on hashed JS/CSS assets."""
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if any(path.endswith(ext) for ext in (".js", ".css", ".svg", ".png", ".jpg", ".woff2", ".woff", ".ttf")):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif path.endswith(".html") or path == "" or path == "/":
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
 
 REPO_ROOT = os.path.abspath(os.path.join(DATA_DIR, ".."))
 DASHBOARD_DIR = os.path.join(REPO_ROOT, "dashboard")
@@ -98,14 +114,14 @@ FRONTEND_DIST = os.path.join(REPO_ROOT, "frontend", "dist")
 
 SERVE_DIR = FRONTEND_DIST if os.path.exists(FRONTEND_DIST) else DASHBOARD_DIR
 if os.path.exists(SERVE_DIR):
-    app.mount("/dashboard", StaticFiles(directory=SERVE_DIR, html=True), name="dashboard")
+    app.mount("/dashboard", CachedStaticFiles(directory=SERVE_DIR, html=True), name="dashboard")
 
 if os.path.exists(DATA_DIR):
     app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
 
 FRONTEND_ASSETS = os.path.join(FRONTEND_DIST, "assets")
 if os.path.exists(FRONTEND_ASSETS):
-    app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS), name="assets")
+    app.mount("/assets", CachedStaticFiles(directory=FRONTEND_ASSETS), name="assets")
 
 
 @app.get("/", include_in_schema=False)
@@ -1339,7 +1355,14 @@ async def startup_event():
 def run_server(host: str = "0.0.0.0", port: int = 8000):
     import uvicorn
 
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+        timeout_keep_alive=65,
+    )
 
 
 if __name__ == "__main__":
