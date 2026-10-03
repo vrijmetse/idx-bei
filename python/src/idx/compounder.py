@@ -107,11 +107,11 @@ def evaluate_forensics(company: dict[str, Any]) -> dict[str, Any]:
         reasons.append("Perusahaan membukukan kerugian bersih (Laba rugi operasional atau ROE negatif).")
 
     # 7. Extreme Leverage / Equity Distortion Check
-    # When equity is paper-thin (< 10% of assets) or DER > 4.0 (for non-financials),
+    # When equity is paper-thin (< 10% of assets) or DER > 3.0 (for non-financials),
     # an astronomical ROE (e.g. SAFE with DER 99.8x, ROE 2212%) is a distortion of near-insolvency, not capital efficiency.
     assets = float(company.get("assets") or 0.0)
     if not is_fin:
-        if der > 4.0 or (assets > 0 and 0 < equity < (assets * 0.10)):
+        if der > 3.0 or (assets > 0 and 0 < equity < (assets * 0.10)):
             if roe_val > 50.0:
                 flags.append("DISTORTED_LEVERAGE_ROE")
                 reasons.append(

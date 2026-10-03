@@ -12,8 +12,9 @@ export const InvestorMemoModal: React.FC<InvestorMemoModalProps> = ({ company, o
   const currentPrice = company.price ?? company.previous_price ?? 0;
   const score = company.compounder_score ?? company.score?.total ?? null;
   const latestFsDate = company.latest_fs_date ? new Date(company.latest_fs_date).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' }) : 'N/A';
-  const isTrapOrLoss = company.is_value_trap || (company.roe != null && company.roe < 0) || (company.npm != null && company.npm < 0);
-  const isHighQuality = (company.roe != null && company.roe >= 15) && !company.is_value_trap;
+  const isExtremeLeverage = (company.de_ratio != null && company.de_ratio > 4.0 && !company.is_blue_chip) || (company.roe != null && company.roe > 100.0);
+  const isTrapOrLoss = company.is_value_trap || (company.roe != null && company.roe < 0) || (company.npm != null && company.npm < 0) || isExtremeLeverage;
+  const isHighQuality = (company.roe != null && company.roe >= 15) && !isTrapOrLoss;
 
   const handlePrint = () => {
     window.print();

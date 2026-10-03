@@ -690,31 +690,50 @@ export const ChartTab: React.FC<ChartTabProps> = ({
         {/* 2. Safe Entry & Targets */}
         <div style={{
           background: 'rgba(15, 23, 42, 0.6)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          border: isTrapOrLoss ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '12px',
           padding: '0.85rem 1rem',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.4rem',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Safe Buy Zone:</span>
-            <strong style={{ color: '#38bdf8' }}>
-              Rp {safeEntryLow.toLocaleString()} – Rp {safeEntryHigh.toLocaleString()}
-            </strong>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Upside Target ({Number(targetGainPct) >= 0 ? `+${targetGainPct}%` : `${targetGainPct}%`}):</span>
-            <strong style={{ color: '#10b981' }}>
-              Rp {profitTarget.toLocaleString()}
-            </strong>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Risk Floor / Cut-Loss ({Number(stopLossPct) >= 0 ? `+${stopLossPct}%` : `${stopLossPct}%`}):</span>
-            <strong style={{ color: '#ef4444' }}>
-              Rp {stopLoss.toLocaleString()}
-            </strong>
-          </div>
+          {isTrapOrLoss ? (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Entry Guidance:</span>
+                <strong style={{ color: '#ef4444' }}>NO SAFE BUY ZONE (DO NOT ENTER)</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Capital Protection:</span>
+                <strong style={{ color: '#f87171' }}>Avoid DCA / High Financial Risk</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Exit Guidance:</span>
+                <strong style={{ color: '#ef4444' }}>Cut-Loss / Exit on Technical Breakdown</strong>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Safe Buy Zone:</span>
+                <strong style={{ color: '#38bdf8' }}>
+                  Rp {safeEntryLow.toLocaleString()} – Rp {safeEntryHigh.toLocaleString()}
+                </strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Upside Target ({Number(targetGainPct) >= 0 ? `+${targetGainPct}%` : `${targetGainPct}%`}):</span>
+                <strong style={{ color: '#10b981' }}>
+                  Rp {profitTarget.toLocaleString()}
+                </strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Risk Floor / Cut-Loss ({Number(stopLossPct) >= 0 ? `+${stopLossPct}%` : `${stopLossPct}%`}):</span>
+                <strong style={{ color: '#ef4444' }}>
+                  Rp {stopLoss.toLocaleString()}
+                </strong>
+              </div>
+            </>
+          )}
         </div>
 
         {/* 3. Smart Money Footprint & Fundamentals */}
