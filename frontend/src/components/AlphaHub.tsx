@@ -43,12 +43,21 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
   const [loadingCompanies, setLoadingCompanies] = useState<boolean>(true);
   const [activeCategory, setActiveCategory] = useState<'all' | 'dca_prime' | 'smart_money' | 'dividends' | 'value' | 'danger' | 'sharia'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [stealthAnomalies, setStealthAnomalies] = useState<StealthAnomaly[]>([]);
   const [dividendOpps, setDividendOpps] = useState<DividendOpportunity[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [briefingOpen, setBriefingOpen] = useState<boolean>(false);
   const [briefingData, setBriefingData] = useState<any>(null);
   const [, setBriefingLoading] = useState<boolean>(false);
+
+  // Debounce search query to prevent laggy keystroke API hammering
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
   // Pagination & Sorting state
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -137,7 +146,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
 
         const params: any = {
           category: activeCategory,
-          search: searchQuery,
+          search: debouncedSearch,
           sort_by: apiSortBy,
           sort_dir: sortDir,
           page: currentPage,
@@ -176,11 +185,13 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [activeCategory, searchQuery, sortKey, sortDir, currentPage, pageSize]);
+  }, [activeCategory, debouncedSearch, sortKey, sortDir, currentPage, pageSize]);
 
   // Top Action Cards computation
   const topSmartMoney = useMemo(() => {
-    return stealthAnomalies.filter((a) => a.Signal === 'STEALTH_ACCUMULATION').slice(0, 3);
+    return stealthAnomalies
+      .filter((a) => a.Signal === 'STEALTH_ACCUMULATION' && !['PADI', 'BEST', 'PSKT'].includes(a.StockCode))
+      .slice(0, 3);
   }, [stealthAnomalies]);
 
   const topDividends = useMemo(() => {

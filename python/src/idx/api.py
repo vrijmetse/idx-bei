@@ -282,6 +282,40 @@ def get_dividend_summary_map() -> dict[str, dict[str, Any]]:
     return {}
 
 
+_hydrated_companies_cache: list[dict[str, Any]] | None = None
+_hydrated_companies_ts: float = 0.0
+
+
+def get_all_hydrated_companies() -> list[dict[str, Any]]:
+    """Return all 973 listed companies fully hydrated with latest market prices, dividends, sharia status, and stealth accumulation signals.
+    Cached in memory with 300s TTL.
+    """
+    global _hydrated_companies_cache, _hydrated_companies_ts
+    now = time.time()
+    if _hydrated_companies_cache is not None and (now - _hydrated_companies_ts) < 300.0:
+        return _hydrated_companies_cache
+
+    alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
+    if not os.path.exists(alpha_file):
+        return []
+
+    data = load_json(alpha_file)
+    prices_map = get_latest_market_prices()
+    div_map = get_dividend_summary_map()
+    stealth_map = get_stealth_accumulation_map()
+    from idx.compounder import hydrate_company_market_data
+    from idx.core.sharia import get_sharia_status_map
+
+    sharia_map = get_sharia_status_map()
+    companies = [
+        hydrate_company_market_data(c, prices_map=prices_map, div_map=div_map, sharia_map=sharia_map, stealth_map=stealth_map)
+        for c in data.get("companies", [])
+    ]
+    _hydrated_companies_cache = companies
+    _hydrated_companies_ts = now
+    return _hydrated_companies_cache
+
+
 @app.get("/api/dashboard-data", tags=["Market Data"])
 async def get_dashboard_data():
     """Return unified dashboard dataset containing companies with prices, super-insiders, and conglomerates."""
@@ -292,17 +326,7 @@ async def get_dashboard_data():
     alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
     if os.path.exists(alpha_file):
         data = load_json(alpha_file)
-        prices_map = get_latest_market_prices()
-        div_map = get_dividend_summary_map()
-        stealth_map = get_stealth_accumulation_map()
-        from idx.compounder import evaluate_forensics, hydrate_company_market_data
-        from idx.core.sharia import get_sharia_status_map
-
-        sharia_map = get_sharia_status_map()
-        data["companies"] = [
-            hydrate_company_market_data(c, prices_map=prices_map, div_map=div_map, sharia_map=sharia_map, stealth_map=stealth_map)
-            for c in data.get("companies", [])
-        ]
+        data["companies"] = get_all_hydrated_companies()
         set_in_cache("dashboard_data", data)
         return data
     return {"companies": [], "super_insiders": [], "conglomerates": []}
@@ -330,18 +354,7 @@ async def get_companies(
 
     alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
     if os.path.exists(alpha_file):
-        data = load_json(alpha_file)
-        prices_map = get_latest_market_prices()
-        div_map = get_dividend_summary_map()
-        stealth_map = get_stealth_accumulation_map()
-        from idx.compounder import evaluate_forensics, hydrate_company_market_data
-        from idx.core.sharia import get_sharia_status_map
-
-        sharia_map = get_sharia_status_map()
-        companies = [
-            hydrate_company_market_data(c, prices_map=prices_map, div_map=div_map, sharia_map=sharia_map, stealth_map=stealth_map)
-            for c in data.get("companies", [])
-        ]
+        companies = get_all_hydrated_companies()
         
         # Apply filtering
         filtered_companies = []
@@ -355,8 +368,10 @@ async def get_companies(
                     if not ((c.get("dca_verdict") in ("PRIME_DCA", "ACCUMULATE") or c.get("compounder_score", 0) >= 60) and not c.get("is_value_trap", False)):
                         keep = False
                 elif category == "smart_money":
-                    # Big institutional stealth accumulation (matches top green card)
-                    if not c.get("is_smart_money_inflow", False):
+                    # Big institutional stealth accumulation (exclude value traps & negative ROE so no trap leaks into smart money)
+                    roe_val = c.get("roe")
+                    is_neg_roe = roe_val is not None and float(roe_val) < 0
+                    if not c.get("is_smart_money_inflow", False) or c.get("is_value_trap", False) or is_neg_roe:
                         keep = False
                 elif category == "dividends":
                     # Safe cashflow dividend gems with low trap score
@@ -1312,6 +1327,9 @@ async def live_price_streamer():
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(live_price_streamer())
+    # Pre-warm hydrated companies cache in background so first user request is instant
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, get_all_hydrated_companies)
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8000):
