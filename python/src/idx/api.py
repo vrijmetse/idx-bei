@@ -204,6 +204,54 @@ _dividend_summary_cache: dict[str, dict[str, Any]] = {}
 _dividend_summary_ts: float = 0.0
 
 
+_stealth_summary_cache: dict[str, dict[str, Any]] | None = None
+_stealth_summary_ts: float = 0.0
+
+
+def get_stealth_accumulation_map() -> dict[str, dict[str, Any]]:
+    """Return dictionary mapping stock code to stealth accumulation & retail trap signals."""
+    global _stealth_summary_cache, _stealth_summary_ts
+    now = time.time()
+    if _stealth_summary_cache and (now - _stealth_summary_ts) < 300.0:
+        return _stealth_summary_cache
+
+    broker_path = os.path.join(DATA_DIR, "parquet", "broker_summary.parquet")
+    stock_path = os.path.join(DATA_DIR, "parquet", "stock_summary.parquet")
+    if not os.path.exists(broker_path) or not os.path.exists(stock_path):
+        return {}
+
+    try:
+        import pandas as pd
+        from idx.signals import detect_stealth_accumulation
+
+        broker_df = pd.read_parquet(broker_path)
+        stock_df = pd.read_parquet(stock_path)
+
+        res = detect_stealth_accumulation(
+            broker_df,
+            stock_df,
+            lookback_days=5,
+            min_turnover_rp=1e9,
+        )
+        anomalies_df = res.get("anomalies_df")
+        res_map = {}
+        if anomalies_df is not None and not anomalies_df.empty:
+            for r in anomalies_df.to_dict("records"):
+                code = r.get("StockCode")
+                if code:
+                    res_map[code] = {
+                        "Signal": r.get("Signal"),
+                        "NetForeignFlowRpB": r.get("NetForeignFlowRpB"),
+                        "PriceChangePct": r.get("PriceChangePct"),
+                    }
+        _stealth_summary_cache = res_map
+        _stealth_summary_ts = now
+        return _stealth_summary_cache
+    except Exception as e:
+        logger.warning(f"Could not load stealth accumulation map: {e}")
+        return {}
+
+
 def get_dividend_summary_map() -> dict[str, dict[str, Any]]:
     """Return dictionary mapping stock code to precomputed dividend metrics."""
     global _dividend_summary_cache, _dividend_summary_ts
@@ -246,12 +294,13 @@ async def get_dashboard_data():
         data = load_json(alpha_file)
         prices_map = get_latest_market_prices()
         div_map = get_dividend_summary_map()
+        stealth_map = get_stealth_accumulation_map()
         from idx.compounder import evaluate_forensics, hydrate_company_market_data
         from idx.core.sharia import get_sharia_status_map
 
         sharia_map = get_sharia_status_map()
         data["companies"] = [
-            hydrate_company_market_data(c, prices_map=prices_map, div_map=div_map, sharia_map=sharia_map)
+            hydrate_company_market_data(c, prices_map=prices_map, div_map=div_map, sharia_map=sharia_map, stealth_map=stealth_map)
             for c in data.get("companies", [])
         ]
         set_in_cache("dashboard_data", data)
@@ -284,12 +333,13 @@ async def get_companies(
         data = load_json(alpha_file)
         prices_map = get_latest_market_prices()
         div_map = get_dividend_summary_map()
+        stealth_map = get_stealth_accumulation_map()
         from idx.compounder import evaluate_forensics, hydrate_company_market_data
         from idx.core.sharia import get_sharia_status_map
 
         sharia_map = get_sharia_status_map()
         companies = [
-            hydrate_company_market_data(c, prices_map=prices_map, div_map=div_map, sharia_map=sharia_map)
+            hydrate_company_market_data(c, prices_map=prices_map, div_map=div_map, sharia_map=sharia_map, stealth_map=stealth_map)
             for c in data.get("companies", [])
         ]
         
@@ -301,19 +351,27 @@ async def get_companies(
             # Category filtering
             if category:
                 if category == "dca_prime":
-                    if c.get("dca_verdict") != "PRIME_DCA":
+                    # All quality compounders suitable for regular accumulation (PRIME_DCA or ACCUMULATE or score >= 60)
+                    if not ((c.get("dca_verdict") in ("PRIME_DCA", "ACCUMULATE") or c.get("compounder_score", 0) >= 60) and not c.get("is_value_trap", False)):
                         keep = False
                 elif category == "smart_money":
+                    # Big institutional stealth accumulation (matches top green card)
                     if not c.get("is_smart_money_inflow", False):
                         keep = False
                 elif category == "dividends":
-                    if c.get("dividend_yield_pct", 0) < 3.0 or c.get("is_value_trap", False):
+                    # Safe cashflow dividend gems with low trap score
+                    div_yield = c.get("dividend_yield_pct") or c.get("yield") or 0.0
+                    trap_score = c.get("dividend_trap_score", 25.0)
+                    if div_yield < 3.0 or c.get("is_value_trap", False) or trap_score > 50.0:
                         keep = False
                 elif category == "value":
-                    if c.get("valuation_status") != "SECTOR_UNDERVALUED" and c.get("valuation_status") != "UNDERVALUED":
+                    if (c.get("valuation_status") not in ("SECTOR_UNDERVALUED", "DEEP_VALUE", "UNDERVALUED") and not c.get("is_undervalued", False)) or c.get("is_value_trap", False):
                         keep = False
                 elif category == "danger":
-                    if not c.get("is_value_trap", False) and not (c.get("roe", 0) < 0) and not (c.get("npm", 0) < 0):
+                    roe_val = c.get("roe")
+                    npm_val = c.get("npm")
+                    is_loss = (roe_val is not None and float(roe_val) < 0) or (npm_val is not None and float(npm_val) < 0)
+                    if not c.get("is_value_trap", False) and not is_loss and not c.get("is_retail_trap", False):
                         keep = False
                 elif category == "sharia":
                     if not c.get("is_sharia", False):

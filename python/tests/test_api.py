@@ -230,6 +230,22 @@ class TestAPI(unittest.TestCase):
         self.assertIsInstance(data["companies"], list)
         self.assertGreater(len(data["companies"]), 0)
 
+    def test_companies_smart_money_category(self):
+        resp = self.client.get("/api/companies?category=smart_money")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertGreater(data["total_count"], 0)
+        tickers = [c["code"] for c in data["companies"]]
+        self.assertTrue(any(t in tickers for t in ["MAPI", "BEST", "EMAS", "ULTJ", "SCNP", "BNGA"]))
+
+    def test_companies_dca_prime_category(self):
+        resp = self.client.get("/api/companies?category=dca_prime&page_size=50")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertGreaterEqual(data["total_count"], 10)
+        for c in data["companies"]:
+            self.assertFalse(c.get("is_value_trap", False))
+
     def test_stock_blocks_endpoint(self):
         # Existing ticker (e.g. BBCA)
         resp = self.client.get("/api/stock/BBCA/blocks")

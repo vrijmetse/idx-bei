@@ -284,10 +284,11 @@ def hydrate_company_market_data(
     prices_map: dict[str, Any] | None = None,
     div_map: dict[str, Any] | None = None,
     sharia_map: dict[str, bool] | None = None,
+    stealth_map: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Hydrate company dictionary with real-time market price, dynamic valuation multiples,
-    dividend yields, and sharia compliance status.
+    dividend yields, sharia compliance status, and smart money bandarmology anomalies.
     """
     c = dict(company)
     code = c.get("code")
@@ -328,6 +329,16 @@ def hydrate_company_market_data(
         c["dps"] = c["annualized_dps"]
         if not c.get("dividend_trap_score"):
             c["dividend_trap_score"] = dm.get("trap_score", 25.0)
+
+    # 4. Smart money bandarmology & stealth accumulation
+    if stealth_map and code in stealth_map:
+        sa = stealth_map[code]
+        sig = sa.get("Signal")
+        c["stealth_signal"] = sig
+        c["is_smart_money_inflow"] = (sig == "STEALTH_ACCUMULATION")
+        c["is_retail_trap"] = (sig == "RETAIL_TRAP")
+        if sa.get("NetForeignFlowRpB") is not None:
+            c["net_foreign_flow_rp_b"] = sa.get("NetForeignFlowRpB")
 
     # 4. Forensic re-evaluation
     forensics = evaluate_forensics(c)
