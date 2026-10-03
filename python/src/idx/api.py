@@ -384,14 +384,23 @@ async def get_signals(
 async def get_stock_data(ticker: str, limit: int = 500):
     import numpy as np
     import pandas as pd
+    from idx.core.adjustments import adjust_stock_splits
 
     ticker = validate_ticker(ticker)
+    cache_key = f"stock_data:{ticker}:{limit}"
+    cached = get_from_cache(cache_key)
+    if cached:
+        return cached
+
     df = query_dataset("stock_summary", where=f"StockCode = '{ticker}'")
     if len(df) == 0:
         raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' not found.")
 
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df = df.sort_values("Date").reset_index(drop=True)
+
+    # 1. Apply backward split adjustment so prices and technical indicators are mathematically continuous
+    df = adjust_stock_splits(df, ticker)
 
     tech = compute_technical_indicators(df, ticker=ticker)
     if limit and limit > 0 and len(tech) > limit:
@@ -504,7 +513,7 @@ async def get_stock_data(ticker: str, limit: int = 500):
     except Exception:
         pass
 
-    return {
+    result = {
         "ticker": ticker,
         "records": records,
         "latest": latest,
@@ -512,6 +521,8 @@ async def get_stock_data(ticker: str, limit: int = 500):
         "financials": financials,
         "decision": decision,
     }
+    set_in_cache(cache_key, result)
+    return result
 
 
 @app.get("/api/stock/{ticker}/blocks", tags=["Market Data"])
