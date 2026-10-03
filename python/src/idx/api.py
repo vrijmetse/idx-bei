@@ -246,40 +246,14 @@ async def get_dashboard_data():
         data = load_json(alpha_file)
         prices_map = get_latest_market_prices()
         div_map = get_dividend_summary_map()
-        from idx.compounder import evaluate_forensics
+        from idx.compounder import evaluate_forensics, hydrate_company_market_data
         from idx.core.sharia import get_sharia_status_map
 
         sharia_map = get_sharia_status_map()
-
-        for c in data.get("companies", []):
-            code = c.get("code")
-            is_sh = sharia_map.get(code, False)
-            c["is_sharia"] = is_sh
-            c["sharia"] = "S" if is_sh else "N"
-
-            if code in prices_map:
-                pm = prices_map[code]
-                c["price"] = pm["price"]
-                c["previous_price"] = pm["previous_price"]
-                c["daily_change"] = pm["daily_change"]
-                c["daily_change_pct"] = pm["daily_change_pct"]
-
-            if code in div_map:
-                dm = div_map[code]
-                c["dividend_yield_pct"] = dm["yield"]
-                c["yield"] = dm["yield"]
-                c["annualized_dps"] = dm["dps"]
-                c["dps"] = dm["dps"]
-                if not c.get("dividend_trap_score"):
-                    c["dividend_trap_score"] = dm["trap_score"]
-
-            forensics = evaluate_forensics(c)
-            if forensics.get("is_value_trap"):
-                c["is_value_trap"] = True
-                if "UNPROFITABLE_NET_LOSS" in forensics.get("flags", []):
-                    c["dca_rating"] = "🚨 HINDARI (Rugi Bersih)"
-                elif "DISTORTED_LEVERAGE_ROE" in forensics.get("flags", []):
-                    c["dca_rating"] = "🚨 HINDARI (Leverage Ekstrem)"
+        data["companies"] = [
+            hydrate_company_market_data(c, prices_map=prices_map, div_map=div_map, sharia_map=sharia_map)
+            for c in data.get("companies", [])
+        ]
         set_in_cache("dashboard_data", data)
         return data
     return {"companies": [], "super_insiders": [], "conglomerates": []}
@@ -310,42 +284,14 @@ async def get_companies(
         data = load_json(alpha_file)
         prices_map = get_latest_market_prices()
         div_map = get_dividend_summary_map()
-        from idx.compounder import evaluate_forensics
+        from idx.compounder import evaluate_forensics, hydrate_company_market_data
         from idx.core.sharia import get_sharia_status_map
 
         sharia_map = get_sharia_status_map()
-
-        companies = data.get("companies", [])
-        # Enrich companies with latest data and sharia status
-        for c in companies:
-            code = c.get("code")
-            is_sh = sharia_map.get(code, False)
-            c["is_sharia"] = is_sh
-            c["sharia"] = "S" if is_sh else "N"
-
-            if code in prices_map:
-                pm = prices_map[code]
-                c["price"] = pm["price"]
-                c["previous_price"] = pm["previous_price"]
-                c["daily_change"] = pm["daily_change"]
-                c["daily_change_pct"] = pm["daily_change_pct"]
-
-            if code in div_map:
-                dm = div_map[code]
-                c["dividend_yield_pct"] = dm["yield"]
-                c["yield"] = dm["yield"]
-                c["annualized_dps"] = dm["dps"]
-                c["dps"] = dm["dps"]
-                if not c.get("dividend_trap_score"):
-                    c["dividend_trap_score"] = dm["trap_score"]
-
-            forensics = evaluate_forensics(c)
-            if forensics.get("is_value_trap"):
-                c["is_value_trap"] = True
-                if "UNPROFITABLE_NET_LOSS" in forensics.get("flags", []):
-                    c["dca_rating"] = "🚨 HINDARI (Rugi Bersih)"
-                elif "DISTORTED_LEVERAGE_ROE" in forensics.get("flags", []):
-                    c["dca_rating"] = "🚨 HINDARI (Leverage Ekstrem)"
+        companies = [
+            hydrate_company_market_data(c, prices_map=prices_map, div_map=div_map, sharia_map=sharia_map)
+            for c in data.get("companies", [])
+        ]
         
         # Apply filtering
         filtered_companies = []

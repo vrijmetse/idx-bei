@@ -240,6 +240,114 @@ def evaluate_sector_valuation(company: dict[str, Any], forensics: dict[str, Any]
     }
 
 
+def compute_dynamic_multiples(
+    price: float | None,
+    book_value: float | None,
+    eps: float | None,
+    fs_date: str | None = None,
+) -> dict[str, float | None]:
+    """
+    Computes dynamic PBV and PER multiples from current price and latest fundamentals.
+    Annualizes interim/quarterly EPS:
+      - 09-30 (Q3 / 9M) -> 4/3x
+      - 06-30 (Q2 / 6M) -> 2x
+      - 03-31 (Q1 / 3M) -> 4x
+      - 12-31 (Q4 / FY) -> 1x
+    """
+    if price is None or price <= 0:
+        return {"price_bv": None, "per": None}
+
+    dynamic_pbv: float | None = None
+    if book_value is not None and book_value != 0:
+        dynamic_pbv = round(price / float(book_value), 2)
+
+    dynamic_per: float | None = None
+    if eps is not None and eps != 0:
+        annualized_eps = float(eps)
+        if fs_date:
+            date_str = str(fs_date)
+            if "09-30" in date_str:
+                annualized_eps = float(eps) * (4.0 / 3.0)
+            elif "06-30" in date_str:
+                annualized_eps = float(eps) * 2.0
+            elif "03-31" in date_str:
+                annualized_eps = float(eps) * 4.0
+
+        if annualized_eps != 0:
+            dynamic_per = round(price / annualized_eps, 2)
+
+    return {"price_bv": dynamic_pbv, "per": dynamic_per}
+
+
+def hydrate_company_market_data(
+    company: dict[str, Any],
+    prices_map: dict[str, Any] | None = None,
+    div_map: dict[str, Any] | None = None,
+    sharia_map: dict[str, bool] | None = None,
+) -> dict[str, Any]:
+    """
+    Hydrate company dictionary with real-time market price, dynamic valuation multiples,
+    dividend yields, and sharia compliance status.
+    """
+    c = dict(company)
+    code = c.get("code")
+
+    # 1. Sharia compliance status
+    if sharia_map and code:
+        is_sh = sharia_map.get(code, False)
+        c["is_sharia"] = is_sh
+        c["sharia"] = "S" if is_sh else "N"
+
+    # 2. Market price & dynamic multiples
+    if prices_map and code in prices_map:
+        pm = prices_map[code]
+        c["price"] = pm.get("price", c.get("price"))
+        c["previous_price"] = pm.get("previous_price", c.get("previous_price"))
+        c["daily_change"] = pm.get("daily_change", c.get("daily_change"))
+        c["daily_change_pct"] = pm.get("daily_change_pct", c.get("daily_change_pct"))
+
+    price = c.get("price")
+    bv = c.get("book_value") or c.get("bookValue")
+    eps = c.get("eps")
+    fs_date = c.get("fs_date") or c.get("fsDate")
+
+    if price and (bv or eps):
+        multiples = compute_dynamic_multiples(price, bv, eps, fs_date)
+        if multiples["price_bv"] is not None:
+            c["price_bv"] = multiples["price_bv"]
+            c["pbv"] = multiples["price_bv"]
+        if multiples["per"] is not None:
+            c["per"] = multiples["per"]
+
+    # 3. Dividend yield
+    if div_map and code in div_map:
+        dm = div_map[code]
+        c["dividend_yield_pct"] = dm.get("yield", c.get("dividend_yield_pct"))
+        c["yield"] = c["dividend_yield_pct"]
+        c["annualized_dps"] = dm.get("dps", c.get("annualized_dps"))
+        c["dps"] = c["annualized_dps"]
+        if not c.get("dividend_trap_score"):
+            c["dividend_trap_score"] = dm.get("trap_score", 25.0)
+
+    # 4. Forensic re-evaluation
+    forensics = evaluate_forensics(c)
+    if forensics.get("is_value_trap"):
+        c["is_value_trap"] = True
+        if "UNPROFITABLE_NET_LOSS" in forensics.get("flags", []):
+            c["dca_rating"] = "🚨 HINDARI (Rugi Bersih)"
+        elif "DISTORTED_LEVERAGE_ROE" in forensics.get("flags", []):
+            c["dca_rating"] = "🚨 HINDARI (Leverage Ekstrem)"
+
+    # 5. Sector valuation re-evaluation with dynamic multiples
+    val = evaluate_sector_valuation(c, forensics)
+    c["valuation_status"] = val.get("status", c.get("valuation_status"))
+    c["is_undervalued"] = val.get("is_undervalued", c.get("is_undervalued"))
+    c["justified_pbv"] = val.get("justified_pbv", c.get("justified_pbv"))
+    c["valuation_badge"] = val.get("verdict_badge", c.get("valuation_badge"))
+
+    return c
+
+
 def calculate_dca_compounder_score(
     company: dict[str, Any],
     forensics: dict[str, Any],
