@@ -161,6 +161,16 @@ class TestAPI(unittest.TestCase):
             self.assertEqual(resp_200.status_code, 200)
             self.assertEqual(resp_200.json()["ticker"], "BBCA")
 
+            # test custom limit parameter (for 1M, 1Y, 5Y range views)
+            records = [
+                {"StockCode": "BBCA", "Date": f"2026-08-{i:02d}", "Close": 10000 + i, "Volume": 5000000}
+                for i in range(1, 10)
+            ]
+            mock_query.return_value = pd.DataFrame(records)
+            resp_limit = self.client.get("/api/stock/BBCA?limit=3")
+            self.assertEqual(resp_limit.status_code, 200)
+            self.assertEqual(len(resp_limit.json()["records"]), 3)
+
     def test_broker_flow_endpoints(self):
         with (
             patch("os.path.exists", return_value=False),

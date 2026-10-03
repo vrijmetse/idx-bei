@@ -76,10 +76,47 @@ export const ChartTab: React.FC<ChartTabProps> = ({
   const [showEma50, setShowEma50] = useState<boolean>(true);
   const [showBollinger, setShowBollinger] = useState<boolean>(false);
   const [showForeignFlow, setShowForeignFlow] = useState<boolean>(true);
+  const [timeRange, setTimeRange] = useState<'1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y' | 'ALL'>('ALL');
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+
+  const applyTimeRange = (
+    range: '1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y' | 'ALL',
+    chart = chartInstanceRef.current,
+    records = stockRecords
+  ) => {
+    setTimeRange(range);
+    if (!chart || records.length === 0) return;
+
+    if (range === 'ALL') {
+      chart.timeScale().fitContent();
+      return;
+    }
+
+    const n = records.length;
+    let fromIndex = 0;
+
+    if (range === '1M') {
+      fromIndex = Math.max(0, n - 22);
+    } else if (range === '3M') {
+      fromIndex = Math.max(0, n - 66);
+    } else if (range === '6M') {
+      fromIndex = Math.max(0, n - 132);
+    } else if (range === 'YTD') {
+      const latestTime = String(records[n - 1].time || '');
+      const currentYear = latestTime.slice(0, 4) || new Date().getFullYear().toString();
+      fromIndex = records.findIndex((r) => String(r.time || '').startsWith(currentYear));
+      if (fromIndex === -1) fromIndex = Math.max(0, n - 66);
+    } else if (range === '1Y') {
+      fromIndex = Math.max(0, n - 252);
+    } else if (range === '5Y') {
+      fromIndex = Math.max(0, n - 1260);
+    }
+
+    chart.timeScale().setVisibleLogicalRange({ from: fromIndex, to: n });
+  };
 
   // Synchronize prop changes
   useEffect(() => {
@@ -97,7 +134,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
     setLoading(true);
     setFetchError(null);
 
-    fetchStockData(activeTicker)
+    fetchStockData(activeTicker, 1500)
       .then((data) => {
         if (!isCancelled) {
           if (data && data.records && data.records.length > 0) {
@@ -365,7 +402,8 @@ export const ChartTab: React.FC<ChartTabProps> = ({
       createSeriesMarkers(candleSeries, markers);
     }
 
-    chart.timeScale().fitContent();
+    chartInstanceRef.current = chart;
+    applyTimeRange(timeRange, chart, stockRecords);
 
     const handleResize = () => {
       if (container && chart) {
@@ -376,6 +414,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      chartInstanceRef.current = null;
       chart.remove();
     };
   }, [stockRecords, showEma20, showEma50, showBollinger, showForeignFlow]);
@@ -773,71 +812,99 @@ export const ChartTab: React.FC<ChartTabProps> = ({
             <TrendingUp size={18} style={{ color: 'var(--accent-blue)' }} /> Real Historical Candlestick & Volume
           </h3>
           
-          {/* Indicator Toggles */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setShowEma20(!showEma20)}
-              style={{
-                padding: '0.3rem 0.65rem',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: '1px solid rgba(245, 158, 11, 0.4)',
-                background: showEma20 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                color: showEma20 ? '#fbbf24' : '#9ca3af',
-              }}
-            >
-              EMA-20
-            </button>
-            <button
-              onClick={() => setShowEma50(!showEma50)}
-              style={{
-                padding: '0.3rem 0.65rem',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: '1px solid rgba(168, 85, 247, 0.4)',
-                background: showEma50 ? 'rgba(168, 85, 247, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                color: showEma50 ? '#c084fc' : '#9ca3af',
-              }}
-            >
-              EMA-50
-            </button>
-            <button
-              onClick={() => setShowBollinger(!showBollinger)}
-              style={{
-                padding: '0.3rem 0.65rem',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: '1px solid rgba(56, 189, 248, 0.4)',
-                background: showBollinger ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                color: showBollinger ? '#38bdf8' : '#9ca3af',
-              }}
-            >
-              Bollinger
-            </button>
-            <button
-              onClick={() => setShowForeignFlow(!showForeignFlow)}
-              style={{
-                padding: '0.3rem 0.65rem',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: '1px solid rgba(16, 185, 129, 0.4)',
-                background: showForeignFlow ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                color: showForeignFlow ? '#34d399' : '#9ca3af',
-              }}
-            >
-              Net Foreign Flow
-            </button>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginLeft: '0.5rem' }}>
-              <Zap size={14} style={{ color: 'var(--accent-gold)' }} /> {stockRecords.length} sessions
-            </span>
+          {/* Timeframe Range Selector & Indicator Toggles */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {/* Range Bar */}
+            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255, 255, 255, 0.05)', padding: '2px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+              {(['1M', '3M', '6M', 'YTD', '1Y', '5Y', 'ALL'] as const).map((rng) => (
+                <button
+                  key={rng}
+                  onClick={() => applyTimeRange(rng)}
+                  style={{
+                    padding: '0.25rem 0.55rem',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: 'none',
+                    background: timeRange === rng ? 'var(--accent-blue, #38bdf8)' : 'transparent',
+                    color: timeRange === rng ? '#0f172a' : '#94a3b8',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {rng}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ width: '1px', height: '20px', background: 'rgba(255, 255, 255, 0.15)' }} />
+
+            {/* Indicator Toggles */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setShowEma20(!showEma20)}
+                style={{
+                  padding: '0.3rem 0.65rem',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                  background: showEma20 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255, 255, 255, 0.03)',
+                  color: showEma20 ? '#fbbf24' : '#9ca3af',
+                }}
+              >
+                EMA-20
+              </button>
+              <button
+                onClick={() => setShowEma50(!showEma50)}
+                style={{
+                  padding: '0.3rem 0.65rem',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: '1px solid rgba(168, 85, 247, 0.4)',
+                  background: showEma50 ? 'rgba(168, 85, 247, 0.2)' : 'rgba(255, 255, 255, 0.03)',
+                  color: showEma50 ? '#c084fc' : '#9ca3af',
+                }}
+              >
+                EMA-50
+              </button>
+              <button
+                onClick={() => setShowBollinger(!showBollinger)}
+                style={{
+                  padding: '0.3rem 0.65rem',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                  background: showBollinger ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.03)',
+                  color: showBollinger ? '#38bdf8' : '#9ca3af',
+                }}
+              >
+                Bollinger
+              </button>
+              <button
+                onClick={() => setShowForeignFlow(!showForeignFlow)}
+                style={{
+                  padding: '0.3rem 0.65rem',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  background: showForeignFlow ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.03)',
+                  color: showForeignFlow ? '#34d399' : '#9ca3af',
+                }}
+              >
+                Net Foreign Flow
+              </button>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginLeft: '0.3rem' }}>
+                <Zap size={14} style={{ color: 'var(--accent-gold)' }} /> {stockRecords.length} sessions
+              </span>
+            </div>
           </div>
         </div>
 

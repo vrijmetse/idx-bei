@@ -381,7 +381,7 @@ async def get_signals(
 
 @app.get("/api/stock/{ticker}", tags=["Market Data"])
 @app.get("/api/stocks/{ticker}", tags=["Market Data"])
-async def get_stock_data(ticker: str, limit: int = 120):
+async def get_stock_data(ticker: str, limit: int = 500):
     import numpy as np
     import pandas as pd
 
@@ -394,7 +394,7 @@ async def get_stock_data(ticker: str, limit: int = 120):
     df = df.sort_values("Date").reset_index(drop=True)
 
     tech = compute_technical_indicators(df, ticker=ticker)
-    if limit and len(tech) > limit:
+    if limit and limit > 0 and len(tech) > limit:
         tech = tech.tail(limit).reset_index(drop=True)
 
     # Standardize time and OHLC fields for charts

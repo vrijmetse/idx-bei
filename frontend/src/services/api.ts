@@ -47,8 +47,8 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   };
 }
 
-export async function fetchStockData(ticker: string): Promise<any> {
-  const resp = await fetch(`/api/stock/${ticker.toUpperCase()}`);
+export async function fetchStockData(ticker: string, limit: number = 500): Promise<any> {
+  const resp = await fetch(`/api/stock/${ticker.toUpperCase()}?limit=${limit}`);
   if (!resp.ok) {
     throw new Error(`Failed to fetch stock data for ${ticker}`);
   }
