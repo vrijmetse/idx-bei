@@ -69,6 +69,24 @@ class TestCompounderQuant(unittest.TestCase):
         self.assertEqual(dca["verdict"], "VALUE_TRAP")
         self.assertEqual(dca["dca_rating"], "🚨 HINDARI (Leverage Ekstrem)")
 
+    def test_unvr_not_falsely_trapped(self):
+        """Verify that a genuine blue chip compounder like UNVR with high dividend payout is NOT falsely flagged as a value trap."""
+        from idx.compounder import evaluate_forensics
+        mock_unvr = {
+            "code": "UNVR",
+            "assets": 16543.58,
+            "equity": 3436.08,
+            "sales": 27417.35,
+            "ebt": 3864.2,
+            "profitPeriod": 3009.7,
+            "roe": 105.4,
+            "deRatio": 3.81,
+            "sector": "Consumer Non-Cyclicals",
+        }
+        forensics = evaluate_forensics(mock_unvr)
+        self.assertFalse(forensics["is_value_trap"])
+        self.assertNotIn("DISTORTED_LEVERAGE_ROE", forensics["flags"])
+
 
 if __name__ == "__main__":
     unittest.main()

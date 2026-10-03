@@ -107,16 +107,16 @@ def evaluate_forensics(company: dict[str, Any]) -> dict[str, Any]:
         reasons.append("Perusahaan membukukan kerugian bersih (Laba rugi operasional atau ROE negatif).")
 
     # 7. Extreme Leverage / Equity Distortion Check
-    # When equity is paper-thin (< 10% of assets) or DER > 3.0 (for non-financials),
-    # an astronomical ROE (e.g. SAFE with DER 99.8x, ROE 2212%) is a distortion of near-insolvency, not capital efficiency.
+    # When equity is near zero / depleted (< Rp 15 Miliar or < 2% of assets),
+    # an astronomical ROE (e.g. SAFE with equity Rp 2.12B, DER 99.8x, ROE 2212%) is a mathematical division-by-near-zero artifact, not real capital efficiency.
     assets = float(company.get("assets") or 0.0)
-    if not is_fin:
-        if der > 3.0 or (assets > 0 and 0 < equity < (assets * 0.10)):
-            if roe_val > 50.0:
-                flags.append("DISTORTED_LEVERAGE_ROE")
-                reasons.append(
-                    f"Distorsi ekuitas mendekati nol / leverage ekstrem (DER {der:.1f}x, Ekuitas Rp {equity:.2f}B). ROE {roe_val:.1f}% adalah ilusi akuntansi akibat defisiensi modal, bukan efisiensi operasional."
-                )
+    if not is_fin and roe_val > 200.0:
+        is_depleted_equity = (0 < equity < 15.0) or (assets > 0 and 0 < (equity / assets) < 0.02) or der > 20.0
+        if is_depleted_equity:
+            flags.append("DISTORTED_LEVERAGE_ROE")
+            reasons.append(
+                f"Distorsi ekuitas mendekati nol / leverage ekstrem (Ekuitas Rp {equity:.2f}B, DER {der:.1f}x). ROE {roe_val:.1f}% adalah ilusi akuntansi akibat modal tiris, bukan efisiensi operasional."
+            )
 
     is_value_trap = (
         "VALUE_TRAP_ONE_OFF" in flags

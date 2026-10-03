@@ -1182,14 +1182,24 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
                       {verdictBadge.text}
                     </span>
                   </td>
-                  <td style={{ padding: '0.85rem 0.5rem', fontWeight: 600, color: (c.roe ?? 0) >= 15 ? '#10b981' : '#cbd5e1' }}>
-                    {c.roe ? `${c.roe}%` : '—'}
+                  <td style={{
+                    padding: '0.85rem 0.5rem',
+                    fontWeight: 600,
+                    color: (c.roe ?? 0) < 0 ? '#f87171' : ((c.roe ?? 0) >= 15 ? '#10b981' : '#cbd5e1'),
+                  }}>
+                    {c.roe != null ? `${Number(c.roe).toFixed(1)}%` : '—'}
                   </td>
                   <td style={{ padding: '0.85rem 0.5rem', color: '#cbd5e1' }}>
                     {c.pbv ?? c.price_bv ? (
                       <div>
-                        <span>{(c.pbv ?? c.price_bv)!.toFixed(2)}x</span>
-                        {c.justified_pbv ? (
+                        <span style={{ color: (c.pbv ?? c.price_bv)! < 0 ? '#f87171' : '#cbd5e1', fontWeight: (c.pbv ?? c.price_bv)! < 0 ? 700 : 400 }}>
+                          {(c.pbv ?? c.price_bv)!.toFixed(2)}x
+                        </span>
+                        {(c.pbv ?? c.price_bv)! < 0 ? (
+                          <div style={{ fontSize: '0.68rem', color: '#f87171', fontWeight: 600 }}>
+                            Defisiensi Modal
+                          </div>
+                        ) : c.justified_pbv ? (
                           <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
                             Fair: {c.justified_pbv.toFixed(2)}x
                           </div>

@@ -425,8 +425,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
     explanation: 'Institutional flows and price action are currently balanced. Await clear volume confirmation or margin expansion before scaling.',
   };
 
-  const isExtremeLeverage = (company?.de_ratio != null && company.de_ratio > 4.0 && !company?.is_blue_chip) || roeVal > 100.0;
-  const isTrapOrLoss = company?.is_value_trap || (company?.roe != null && company.roe < 0) || (company?.npm != null && company.npm < 0) || isExtremeLeverage;
+  const isTrapOrLoss = company?.is_value_trap || (company?.roe != null && company.roe < 0) || (company?.npm != null && company.npm < 0);
   const isRetailPump = rsiStatus === 'Overbought' || (dailyChange > 0 && netForeign < 0 && Math.abs(netForeign) > foreignBuy * 2);
   const isHighCashflow = yieldVal >= 5.0 && !isTrapOrLoss && (roeVal >= 12.0 || company?.is_blue_chip);
   const isStrongAccumulation = netForeign > 0 && !isTrapOrLoss && (roeVal >= 15.0 || company?.is_blue_chip);
@@ -440,8 +439,8 @@ export const ChartTab: React.FC<ChartTabProps> = ({
       color: '#f87171',
       risk: 'Critical Risk',
       riskColor: '#f87171',
-      explanation: isExtremeLeverage
-        ? `Extreme debt leverage (DER ${(company?.de_ratio ?? 0).toFixed(1)}x) or paper-thin equity distortion (ROE ${roeVal.toFixed(1)}%). High insolvency risk. Do not DCA.`
+      explanation: company?.is_value_trap && (roeVal > 100.0 || (company?.de_ratio ?? 0) > 10.0)
+        ? `Extreme debt leverage (DER ${(company?.de_ratio ?? 0).toFixed(1)}x) or depleted equity distortion (ROE ${roeVal.toFixed(1)}%). High insolvency risk. Do not DCA.`
         : `Company is operating at a net loss (ROE ${roeVal ? `${roeVal.toFixed(1)}%` : 'negative'}) or flagged for forensic accounting risk. Do not DCA.`,
     };
   } else if (isRetailPump) {
