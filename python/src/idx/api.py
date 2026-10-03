@@ -243,9 +243,16 @@ async def get_dashboard_data():
         prices_map = get_latest_market_prices()
         div_map = get_dividend_summary_map()
         from idx.compounder import evaluate_forensics
+        from idx.core.sharia import get_sharia_status_map
+
+        sharia_map = get_sharia_status_map()
 
         for c in data.get("companies", []):
             code = c.get("code")
+            is_sh = sharia_map.get(code, False)
+            c["is_sharia"] = is_sh
+            c["sharia"] = "S" if is_sh else "N"
+
             if code in prices_map:
                 pm = prices_map[code]
                 c["price"] = pm["price"]
@@ -282,10 +289,17 @@ async def get_companies():
         prices_map = get_latest_market_prices()
         div_map = get_dividend_summary_map()
         from idx.compounder import evaluate_forensics
+        from idx.core.sharia import get_sharia_status_map
+
+        sharia_map = get_sharia_status_map()
 
         companies = data.get("companies", [])
         for c in companies:
             code = c.get("code")
+            is_sh = sharia_map.get(code, False)
+            c["is_sharia"] = is_sh
+            c["sharia"] = "S" if is_sh else "N"
+
             if code in prices_map:
                 pm = prices_map[code]
                 c["price"] = pm["price"]
