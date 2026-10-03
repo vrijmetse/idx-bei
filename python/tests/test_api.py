@@ -231,12 +231,30 @@ class TestAPI(unittest.TestCase):
         self.assertGreater(len(data["companies"]), 0)
 
     def test_companies_smart_money_category(self):
-        resp = self.client.get("/api/companies?category=smart_money")
+        resp = self.client.get("/api/companies?category=smart_money&page_size=50")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertGreater(data["total_count"], 0)
         tickers = [c["code"] for c in data["companies"]]
-        self.assertTrue(any(t in tickers for t in ["MAPI", "BEST", "EMAS", "ULTJ", "SCNP", "BNGA"]))
+        # Must contain genuine institutional accumulators
+        self.assertTrue(any(t in tickers for t in ["MAPI", "EMAS", "ULTJ", "SCNP", "BNGA"]))
+        # Strict Invariant: Value traps, negative ROE, and speculative traps (PADI, BEST, PSKT) must NEVER leak into Smart Money
+        for banned in ["PADI", "BEST", "PSKT"]:
+            self.assertNotIn(banned, tickers, f"Banned trap ticker {banned} leaked into Smart Money!")
+        for c in data["companies"]:
+            self.assertFalse(c.get("is_value_trap", False), f"Value trap {c['code']} in Smart Money")
+            if c.get("roe") is not None:
+                self.assertGreaterEqual(float(c["roe"]), 0.0, f"Loss-maker {c['code']} with negative ROE in Smart Money")
+
+    def test_companies_listing_latency_sub_100ms(self):
+        import time
+        # Ensure cache is warm
+        self.client.get("/api/companies?page=1")
+        t0 = time.time()
+        resp = self.client.get("/api/companies?page=2&page_size=25&sort_by=price&sort_dir=asc")
+        elapsed_ms = (time.time() - t0) * 1000
+        self.assertEqual(resp.status_code, 200)
+        self.assertLess(elapsed_ms, 100.0, f"Query latency {elapsed_ms:.1f}ms exceeded 100ms threshold!")
 
     def test_companies_dca_prime_category(self):
         resp = self.client.get("/api/companies?category=dca_prime&page_size=50")
