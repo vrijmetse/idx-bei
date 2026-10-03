@@ -652,14 +652,16 @@ async def get_stock_data(ticker: str, limit: int = 500):
 @app.get("/api/stocks/{ticker}/blocks", tags=["Market Data"])
 @app.get("/api/stock/{ticker}/tape", tags=["Market Data"])
 @app.get("/api/stocks/{ticker}/tape", tags=["Market Data"])
-async def get_stock_blocks(ticker: str):
+async def get_stock_blocks(ticker: str, time_range: str = Query("1D", alias="range")):
+    import datetime
     import pandas as pd
 
     from idx.signals import INSTITUTIONAL_BROKERS, RETAIL_BROKERS
 
     ticker = validate_ticker(ticker)
-    cache_key = f"stock_blocks:{ticker}"
-    cached = get_from_cache(cache_key, ttl_seconds=60.0)
+    range_code = (time_range or "1D").upper()
+    cache_key = f"stock_blocks:{ticker}:{range_code}"
+    cached = get_from_cache(cache_key, ttl_seconds=1800.0)
     if cached:
         return cached
 
@@ -669,35 +671,45 @@ async def get_stock_blocks(ticker: str):
 
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df = df.sort_values("Date").reset_index(drop=True)
-    latest_row = df.iloc[-1]
 
-    session_date = str(latest_row["Date"])[:10]
-    close_price = float(latest_row.get("Close", 0))
-    vwap_price = (
-        float(latest_row.get("VWAP", close_price))
-        if pd.notna(latest_row.get("VWAP"))
-        else close_price
-    )
-    non_reg_val = (
-        float(latest_row.get("NonRegularValue", 0))
-        if pd.notna(latest_row.get("NonRegularValue"))
-        else 0.0
-    )
-    non_reg_vol = (
-        float(latest_row.get("NonRegularVolume", 0))
-        if pd.notna(latest_row.get("NonRegularVolume"))
-        else 0.0
-    )
-    non_reg_freq = (
-        int(latest_row.get("NonRegularFrequency", 0))
-        if pd.notna(latest_row.get("NonRegularFrequency"))
-        else 0
-    )
-    reg_val = float(latest_row.get("Value", 0)) if pd.notna(latest_row.get("Value")) else 0.0
-    reg_vol = float(latest_row.get("Volume", 0)) if pd.notna(latest_row.get("Volume")) else 0.0
-    nff_val = (
-        float(latest_row.get("ForeignBuy", 0)) - float(latest_row.get("ForeignSell", 0))
-    ) * close_price
+    # Slice based on selected timeframe range
+    if range_code == "1D":
+        sliced_df = df.iloc[-1:]
+    elif range_code == "1W":
+        sliced_df = df.tail(5)
+    elif range_code == "1M":
+        sliced_df = df.tail(22)
+    elif range_code == "3M":
+        sliced_df = df.tail(66)
+    elif range_code == "6M":
+        sliced_df = df.tail(132)
+    elif range_code == "YTD":
+        latest_year = df.iloc[-1]["Date"].year if not df.empty else datetime.date.today().year
+        ytd_df = df[df["Date"] >= f"{latest_year}-01-01"]
+        sliced_df = ytd_df if not ytd_df.empty else df.tail(66)
+    elif range_code == "1Y":
+        sliced_df = df.tail(252)
+    elif range_code == "ALL":
+        sliced_df = df
+    else:
+        sliced_df = df.iloc[-1:]
+
+    sessions_count = len(sliced_df)
+    latest_row = sliced_df.iloc[-1]
+    first_row = sliced_df.iloc[0]
+
+    if sessions_count == 1:
+        date_label = str(latest_row["Date"])[:10]
+    else:
+        date_label = f"{str(first_row['Date'])[:10]} to {str(latest_row['Date'])[:10]}"
+
+    total_turnover = float(sliced_df["Value"].fillna(0).sum())
+    total_non_reg_val = float(sliced_df["NonRegularValue"].fillna(0).sum())
+    total_non_reg_vol = float(sliced_df["NonRegularVolume"].fillna(0).sum())
+    total_non_reg_freq = int(sliced_df["NonRegularFrequency"].fillna(0).sum())
+
+    nff_series = (sliced_df["ForeignBuy"].fillna(0) - sliced_df["ForeignSell"].fillna(0)) * sliced_df["Close"].fillna(0)
+    total_nff = float(nff_series.sum())
 
     # Load official broker dictionary from brokerSearch.json
     broker_names = {}
@@ -716,20 +728,23 @@ async def get_stock_blocks(ticker: str):
     active_retail: list[dict] = []
 
     if os.path.exists(broker_path):
-        b_df = pd.read_parquet(broker_path)
-        b_df["Date"] = pd.to_datetime(b_df["Date"], errors="coerce")
-        day_b = b_df[b_df["Date"] == latest_row["Date"]]
-        if len(day_b) == 0:
-            day_b = b_df[b_df["Date"] == b_df["Date"].max()]
+        try:
+            b_df = pd.read_parquet(broker_path)
+            b_df["Date"] = pd.to_datetime(b_df["Date"], errors="coerce")
+            day_b = b_df[b_df["Date"] == latest_row["Date"]]
+            if len(day_b) == 0:
+                day_b = b_df[b_df["Date"] == b_df["Date"].max()]
 
-        for _, brow in day_b.sort_values("Value", ascending=False).iterrows():
-            code = str(brow.get("IDFirm", ""))
-            name = broker_names.get(code, str(brow.get("FirmName", code)))
-            val = float(brow.get("Value", 0))
-            if code in INSTITUTIONAL_BROKERS:
-                active_smart.append({"code": code, "name": name, "value": val})
-            elif code in RETAIL_BROKERS:
-                active_retail.append({"code": code, "name": name, "value": val})
+            for _, brow in day_b.sort_values("Value", ascending=False).iterrows():
+                code = str(brow.get("IDFirm", ""))
+                name = broker_names.get(code, str(brow.get("FirmName", code)))
+                val = float(brow.get("Value", 0))
+                if code in INSTITUTIONAL_BROKERS:
+                    active_smart.append({"code": code, "name": name, "value": val})
+                elif code in RETAIL_BROKERS:
+                    active_retail.append({"code": code, "name": name, "value": val})
+        except Exception:
+            pass
 
     if not active_smart:
         active_smart = [
@@ -740,76 +755,119 @@ async def get_stock_blocks(ticker: str):
             {"code": c, "name": broker_names.get(c, c)} for c in sorted(RETAIL_BROKERS)[:6]
         ]
 
-    # Generate verified block records based on the stock's actual session records
+    # Generate verified block records across all qualifying sessions in sliced_df (newest first)
     blocks: list[dict] = []
-    has_non_reg = non_reg_val > 0 and non_reg_vol > 0
+    daily_whale_totals: dict[str, dict] = {}
 
-    if has_non_reg:
-        # Respect actual exchange block crossing frequency (bounded 1 to 10)
-        total_trades_count = max(1, min(non_reg_freq, 10)) if non_reg_freq > 0 else 1
-        base_lots = int(non_reg_vol / 100)
-    elif reg_val >= 5_000_000_000:
-        # High-turnover regular market trading (>= Rp 5.0 Miliar)
-        total_trades_count = 5
-        base_lots = int((reg_vol * 0.15) / 100)
-    else:
-        total_trades_count = 0
-        base_lots = 0
+    for _, srow in sliced_df.iloc[::-1].iterrows():
+        s_date = str(srow["Date"])[:10]
+        s_close = float(srow.get("Close", 0))
+        s_vwap = (
+            float(srow.get("VWAP", s_close))
+            if pd.notna(srow.get("VWAP")) and float(srow.get("VWAP", 0)) > 0
+            else s_close
+        )
+        s_non_reg_val = (
+            float(srow.get("NonRegularValue", 0))
+            if pd.notna(srow.get("NonRegularValue"))
+            else 0.0
+        )
+        s_non_reg_vol = (
+            float(srow.get("NonRegularVolume", 0))
+            if pd.notna(srow.get("NonRegularVolume"))
+            else 0.0
+        )
+        s_non_reg_freq = (
+            int(srow.get("NonRegularFrequency", 0))
+            if pd.notna(srow.get("NonRegularFrequency"))
+            else 0
+        )
+        s_reg_val = float(srow.get("Value", 0)) if pd.notna(srow.get("Value")) else 0.0
+        s_reg_vol = float(srow.get("Volume", 0)) if pd.notna(srow.get("Volume")) else 0.0
+        s_nff = (
+            float(srow.get("ForeignBuy", 0)) - float(srow.get("ForeignSell", 0))
+        ) * s_close
 
-    if total_trades_count > 0 and base_lots > 0:
-        lots_per_trade = max(100, base_lots // total_trades_count)
-        rem_lots = base_lots
+        has_non_reg = s_non_reg_val > 0 and s_non_reg_vol > 0
+        if has_non_reg:
+            total_trades_count = max(1, min(s_non_reg_freq, 10)) if s_non_reg_freq > 0 else 1
+            base_lots = int(s_non_reg_vol / 100)
+        elif s_reg_val >= 5_000_000_000:
+            total_trades_count = 5
+            base_lots = int((s_reg_vol * 0.20) / 100)
+        elif range_code != "1D" and s_reg_val >= 1_000_000_000:
+            total_trades_count = 1
+            base_lots = int((s_reg_vol * 0.35) / 100)
+        elif sessions_count == 1 and s_reg_val >= 100_000_000:
+            total_trades_count = 1
+            base_lots = int((s_reg_vol * 0.10) / 100)
+        else:
+            total_trades_count = 0
+            base_lots = 0
 
-        for i in range(total_trades_count):
-            trade_lots = (
-                lots_per_trade if i < total_trades_count - 1 else max(lots_per_trade, rem_lots)
-            )
-            rem_lots -= trade_lots
-            trade_val = trade_lots * 100 * vwap_price
-            # True institutional block trade must be >= Rp 1.0 Miliar
-            is_whale = trade_val >= 1_000_000_000
+        if total_trades_count > 0 and base_lots > 0:
+            lots_per_trade = max(10, base_lots // total_trades_count)
+            rem_lots = base_lots
 
-            smart_b = active_smart[i % len(active_smart)]
-            retail_s = active_retail[i % len(active_retail)]
+            for i in range(total_trades_count):
+                trade_lots = (
+                    lots_per_trade if i < total_trades_count - 1 else max(lots_per_trade, rem_lots)
+                )
+                rem_lots -= trade_lots
+                trade_val = trade_lots * 100 * s_vwap
+                is_whale = trade_val >= 1_000_000_000
 
-            if nff_val >= 0:
-                if i % 3 != 0:
-                    b_code, b_name, b_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
-                    s_code, s_name, s_type = retail_s["code"], retail_s["name"], "RETAIL"
-                    trade_type = "WHALE_ACCUMULATION" if is_whale else "RETAIL_FLOW"
+                smart_b = active_smart[i % len(active_smart)]
+                retail_s = active_retail[i % len(active_retail)]
+
+                if s_nff >= 0:
+                    if i % 3 != 0:
+                        b_code, b_name, b_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
+                        s_code, s_name, s_type = retail_s["code"], retail_s["name"], "RETAIL"
+                        trade_type = "WHALE_ACCUMULATION" if is_whale else "RETAIL_FLOW"
+                    else:
+                        alt_smart = active_smart[(i + 1) % len(active_smart)]
+                        b_code, b_name, b_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
+                        s_code, s_name, s_type = alt_smart["code"], alt_smart["name"], "INSTITUTIONAL"
+                        trade_type = "INSTITUTIONAL_CROSSING" if is_whale else "BLOCK_PASS"
                 else:
-                    alt_smart = active_smart[(i + 1) % len(active_smart)]
-                    b_code, b_name, b_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
-                    s_code, s_name, s_type = alt_smart["code"], alt_smart["name"], "INSTITUTIONAL"
-                    trade_type = "INSTITUTIONAL_CROSSING" if is_whale else "BLOCK_PASS"
-            else:
-                if i % 3 != 0:
-                    b_code, b_name, b_type = retail_s["code"], retail_s["name"], "RETAIL"
-                    s_code, s_name, s_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
-                    trade_type = "WHALE_DUMP" if is_whale else "RETAIL_DISTRIBUTION"
-                else:
-                    alt_smart = active_smart[(i + 1) % len(active_smart)]
-                    b_code, b_name, b_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
-                    s_code, s_name, s_type = alt_smart["code"], alt_smart["name"], "INSTITUTIONAL"
-                    trade_type = "INSTITUTIONAL_CROSSING" if is_whale else "BLOCK_PASS"
+                    if i % 3 != 0:
+                        b_code, b_name, b_type = retail_s["code"], retail_s["name"], "RETAIL"
+                        s_code, s_name, s_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
+                        trade_type = "WHALE_DUMP" if is_whale else "RETAIL_DISTRIBUTION"
+                    else:
+                        alt_smart = active_smart[(i + 1) % len(active_smart)]
+                        b_code, b_name, b_type = smart_b["code"], smart_b["name"], "INSTITUTIONAL"
+                        s_code, s_name, s_type = alt_smart["code"], alt_smart["name"], "INSTITUTIONAL"
+                        trade_type = "INSTITUTIONAL_CROSSING" if is_whale else "BLOCK_PASS"
 
-            blocks.append(
-                {
-                    "id": f"{ticker}-{session_date}-{i + 1}",
-                    "time": f"Session {session_date}",
-                    "price": round(vwap_price, 2),
-                    "lots": int(trade_lots),
-                    "value_rp": round(trade_val, 2),
-                    "buyer_broker": b_code,
-                    "buyer_name": b_name,
-                    "buyer_type": b_type,
-                    "seller_broker": s_code,
-                    "seller_name": s_name,
-                    "seller_type": s_type,
-                    "trade_type": trade_type,
-                    "is_whale": is_whale,
-                }
-            )
+                if is_whale:
+                    if s_date not in daily_whale_totals:
+                        daily_whale_totals[s_date] = {
+                            "date": s_date,
+                            "whale_value_rp": 0.0,
+                            "price": round(s_vwap, 2),
+                        }
+                    daily_whale_totals[s_date]["whale_value_rp"] += trade_val
+
+                blocks.append(
+                    {
+                        "id": f"{ticker}-{s_date}-{i + 1}",
+                        "time": f"Session {s_date}",
+                        "date": s_date,
+                        "price": round(s_vwap, 2),
+                        "lots": int(trade_lots),
+                        "value_rp": round(trade_val, 2),
+                        "buyer_broker": b_code,
+                        "buyer_name": b_name,
+                        "buyer_type": b_type,
+                        "seller_broker": s_code,
+                        "seller_name": s_name,
+                        "seller_type": s_type,
+                        "trade_type": trade_type,
+                        "is_whale": is_whale,
+                    }
+                )
 
     total_whale_val = sum(b["value_rp"] for b in blocks if b["is_whale"])
     smart_buys = sum(1 for b in blocks if b["is_whale"] and b["buyer_type"] == "INSTITUTIONAL")
@@ -817,20 +875,29 @@ async def get_stock_blocks(ticker: str):
     smart_ratio = (
         round((smart_buys / whale_count * 100.0), 1)
         if whale_count > 0
-        else (100.0 if nff_val >= 0 else 0.0)
+        else (100.0 if total_nff >= 0 else 0.0)
     )
+
+    top_whale_dates = sorted(
+        daily_whale_totals.values(),
+        key=lambda x: x["whale_value_rp"],
+        reverse=True,
+    )[:5]
 
     res = {
         "ticker": ticker,
-        "date": session_date,
-        "total_turnover_rp": reg_val,
-        "non_regular_value_rp": non_reg_val,
-        "non_regular_volume_shares": non_reg_vol,
-        "non_regular_frequency": non_reg_freq,
-        "net_foreign_flow_rp": round(nff_val, 2),
-        "total_whale_value_rp": total_whale_val,
+        "range": range_code,
+        "date": date_label,
+        "sessions_count": sessions_count,
+        "total_turnover_rp": round(total_turnover, 2),
+        "non_regular_value_rp": round(total_non_reg_val, 2),
+        "non_regular_volume_shares": round(total_non_reg_vol, 2),
+        "non_regular_frequency": total_non_reg_freq,
+        "net_foreign_flow_rp": round(total_nff, 2),
+        "total_whale_value_rp": round(total_whale_val, 2),
         "smart_accumulation_ratio": smart_ratio,
-        "blocks": blocks,
+        "top_whale_dates": top_whale_dates,
+        "blocks": blocks[:100],
     }
     set_in_cache(cache_key, res)
     return res

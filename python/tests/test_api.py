@@ -291,6 +291,36 @@ class TestAPI(unittest.TestCase):
         for block in whale_blocks:
             self.assertGreaterEqual(block["value_rp"], 1_000_000_000)
 
+    def test_stock_blocks_range_aggregation(self):
+        # 1. BBCA 1D vs 1M
+        resp_1d = self.client.get("/api/stock/BBCA/blocks?range=1D")
+        self.assertEqual(resp_1d.status_code, 200)
+        data_1d = resp_1d.json()
+        self.assertEqual(data_1d.get("range"), "1D")
+        self.assertEqual(data_1d.get("sessions_count", 1), 1)
+
+        resp_1m = self.client.get("/api/stock/BBCA/blocks?range=1M")
+        self.assertEqual(resp_1m.status_code, 200)
+        data_1m = resp_1m.json()
+        self.assertEqual(data_1m.get("range"), "1M")
+        self.assertGreater(data_1m.get("sessions_count", 0), 1)
+        self.assertGreaterEqual(data_1m["total_turnover_rp"], data_1d["total_turnover_rp"])
+        self.assertIn("top_whale_dates", data_1m)
+
+        # 2. CTBN (user's exact case): 0 whales on 1D, but detected on 1Y
+        resp_ctbn_1d = self.client.get("/api/stock/CTBN/blocks?range=1D")
+        self.assertEqual(resp_ctbn_1d.status_code, 200)
+        data_ctbn_1d = resp_ctbn_1d.json()
+        self.assertEqual(data_ctbn_1d["total_whale_value_rp"], 0)
+
+        resp_ctbn_1y = self.client.get("/api/stock/CTBN/blocks?range=1Y")
+        self.assertEqual(resp_ctbn_1y.status_code, 200)
+        data_ctbn_1y = resp_ctbn_1y.json()
+        self.assertEqual(data_ctbn_1y.get("range"), "1Y")
+        self.assertGreater(data_ctbn_1y.get("sessions_count", 0), 200)
+        self.assertGreater(data_ctbn_1y["total_whale_value_rp"], 0)
+        self.assertGreaterEqual(len(data_ctbn_1y["top_whale_dates"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

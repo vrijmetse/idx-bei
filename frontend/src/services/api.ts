@@ -176,8 +176,8 @@ export async function fetchDailyBriefing(date?: string): Promise<any> {
   return await resp.json();
 }
 
-export async function fetchStockBlocks(ticker: string): Promise<any> {
-  const resp = await fetch(`/api/stock/${ticker.toUpperCase()}/blocks`);
+export async function fetchStockBlocks(ticker: string, range: string = '1D'): Promise<any> {
+  const resp = await fetch(`/api/stock/${ticker.toUpperCase()}/blocks?range=${encodeURIComponent(range)}`);
   if (!resp.ok) {
     throw new Error(`Failed to fetch verified block trades for ${ticker}`);
   }

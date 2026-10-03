@@ -168,7 +168,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
 
   useEffect(() => {
     let isCancelled = false;
-    fetchStockBlocks(activeTicker)
+    fetchStockBlocks(activeTicker, timeRange)
       .then((data) => {
         if (!isCancelled) {
           setBlockData(data);
@@ -183,7 +183,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [activeTicker]);
+  }, [activeTicker, timeRange]);
 
 
   // Handle live WebSocket price updates
@@ -1102,9 +1102,24 @@ export const ChartTab: React.FC<ChartTabProps> = ({
                 WHALE RADAR LIVE
               </span>
             </div>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>
-              Live institutional prints filtering out retail noise. Tracks who is absorbing inventory ({activeTicker}).
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>
+                Tracking institutional accumulation and block prints across <strong style={{ color: '#c084fc' }}>{blockData?.range || timeRange}</strong> window ({blockData?.date || 'Latest Close'}).
+              </p>
+              {blockData?.sessions_count > 1 && (
+                <span style={{
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: '6px',
+                  background: 'rgba(56, 189, 248, 0.15)',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  color: '#38bdf8',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                }}>
+                  {blockData.sessions_count} sessions aggregated
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Filter Pills */}
@@ -1158,11 +1173,15 @@ export const ChartTab: React.FC<ChartTabProps> = ({
           gap: '1rem',
         }}>
           <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '10px', padding: '0.85rem 1rem' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Total Whale Volume Today</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
+              Total Whale Volume ({blockData?.sessions_count > 1 ? (blockData?.range || timeRange) : 'Today'})
+            </div>
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#facc15' }}>
               Rp {(totalWhaleValue / 1e9).toFixed(2)}B
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Verified Institutional Orders ≥ Rp 1.0B</div>
+            <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+              {blockData?.sessions_count > 1 ? `Across ${blockData.sessions_count} sessions (≥ Rp 1.0B prints)` : 'Verified Institutional Orders ≥ Rp 1.0B'}
+            </div>
           </div>
 
           <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '10px', padding: '0.85rem 1rem' }}>
@@ -1193,12 +1212,14 @@ export const ChartTab: React.FC<ChartTabProps> = ({
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>— (No Institutional Blocks Today)</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>— (No Institutional Blocks in {blockData?.range || timeRange})</div>
             )}
           </div>
 
           <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '10px', padding: '0.85rem 1rem' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Pasar Nego Crossings</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
+              Pasar Nego Crossings ({blockData?.sessions_count > 1 ? (blockData?.range || timeRange) : 'Today'})
+            </div>
             {blockData && blockData.non_regular_value_rp > 0 ? (
               <>
                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#c084fc' }}>
@@ -1229,6 +1250,23 @@ export const ChartTab: React.FC<ChartTabProps> = ({
               </tr>
             </thead>
             <tbody>
+              {filteredTrades.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ padding: '3.5rem 1.5rem', textAlign: 'center' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.6rem', opacity: 0.6 }}>🐋</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#f8fafc', marginBottom: '0.35rem' }}>
+                      No Whale Orders (≥ Rp 500M) in {blockData?.range || timeRange} Window
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: '#94a3b8', maxWidth: '520px', margin: '0 auto', lineHeight: 1.5 }}>
+                      {blockData?.total_turnover_rp > 0
+                        ? `Total turnover across ${blockData.sessions_count || 1} session(s) was Rp ${(blockData.total_turnover_rp / 1e6).toFixed(1)}M without single orders exceeding Rp 500M.`
+                        : `No registered turnover detected for this timeframe.`}
+                      <br />
+                      Switch to <strong style={{ color: '#38bdf8' }}>1M, 3M, or 1Y</strong> in the chart above or toggle <strong style={{ color: '#c084fc' }}>"All Block Trades"</strong> to inspect lower lot sizes.
+                    </div>
+                  </td>
+                </tr>
+              )}
               {filteredTrades.map((trade: BlockTrade) => {
                 let badgeStyle = {
                   label: 'WHALE ACCUMULATION',
