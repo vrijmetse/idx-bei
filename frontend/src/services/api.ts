@@ -47,6 +47,40 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   };
 }
 
+export async function fetchCompaniesList(params: {
+  category?: 'all' | 'dca_prime' | 'smart_money' | 'dividends' | 'value' | 'danger' | 'sharia';
+  search?: string;
+  min_score?: number;
+  max_per?: number;
+  min_roe?: number;
+  min_yield?: number;
+  is_sharia?: boolean;
+  sort_by?: string;
+  sort_dir?: 'asc' | 'desc';
+  page?: number;
+  page_size?: number;
+}): Promise<any> {
+  const query = new URLSearchParams();
+  if (params.category && params.category !== 'all') query.append('category', params.category);
+  if (params.search) query.append('search', params.search);
+  if (params.min_score != null) query.append('min_score', String(params.min_score));
+  if (params.max_per != null) query.append('max_per', String(params.max_per));
+  if (params.min_roe != null) query.append('min_roe', String(params.min_roe));
+  if (params.min_yield != null) query.append('min_yield', String(params.min_yield));
+  if (params.is_sharia != null) query.append('is_sharia', String(params.is_sharia));
+  if (params.sort_by) query.append('sort_by', params.sort_by);
+  if (params.sort_dir) query.append('sort_dir', params.sort_dir);
+  if (params.page) query.append('page', String(params.page));
+  if (params.page_size) query.append('page_size', String(params.page_size));
+
+  const url = `/api/companies?${query.toString()}`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error('Failed to fetch filtered companies list');
+  }
+  return await resp.json();
+}
+
 export async function fetchStockData(ticker: string, limit: number = 500): Promise<any> {
   const resp = await fetch(`/api/stock/${ticker.toUpperCase()}?limit=${limit}`);
   if (!resp.ok) {

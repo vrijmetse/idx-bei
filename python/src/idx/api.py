@@ -237,6 +237,10 @@ def get_dividend_summary_map() -> dict[str, dict[str, Any]]:
 @app.get("/api/dashboard-data", tags=["Market Data"])
 async def get_dashboard_data():
     """Return unified dashboard dataset containing companies with prices, super-insiders, and conglomerates."""
+    cached = get_from_cache("dashboard_data", ttl_seconds=60.0)
+    if cached:
+        return cached
+
     alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
     if os.path.exists(alpha_file):
         data = load_json(alpha_file)
@@ -276,13 +280,31 @@ async def get_dashboard_data():
                     c["dca_rating"] = "🚨 HINDARI (Rugi Bersih)"
                 elif "DISTORTED_LEVERAGE_ROE" in forensics.get("flags", []):
                     c["dca_rating"] = "🚨 HINDARI (Leverage Ekstrem)"
+        set_in_cache("dashboard_data", data)
         return data
     return {"companies": [], "super_insiders": [], "conglomerates": []}
 
 
 @app.get("/api/companies", tags=["Fundamental"])
-async def get_companies():
+async def get_companies(
+    category: str | None = Query(None, description="Filter category: dca_prime, smart_money, dividends, value, danger, sharia"),
+    search: str | None = Query(None, description="Search by ticker or name"),
+    min_score: float | None = Query(None, description="Minimum compounder score"),
+    max_per: float | None = Query(None, description="Maximum PER"),
+    min_roe: float | None = Query(None, description="Minimum ROE"),
+    min_yield: float | None = Query(None, description="Minimum Dividend Yield"),
+    is_sharia: bool | None = Query(None, description="Filter for Sharia compliant stocks"),
+    sort_by: str = Query("compounder_score", description="Sort key"),
+    sort_dir: str = Query("desc", description="Sort direction: asc or desc"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=100, description="Items per page"),
+):
     """Return list of all listed companies with financial metrics, governance, and prices."""
+    cache_key = f"companies_list:{category}:{search}:{min_score}:{max_per}:{min_roe}:{min_yield}:{is_sharia}:{sort_by}:{sort_dir}:{page}:{page_size}"
+    cached = get_from_cache(cache_key, ttl_seconds=60.0)
+    if cached:
+        return cached
+
     alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
     if os.path.exists(alpha_file):
         data = load_json(alpha_file)
@@ -294,6 +316,7 @@ async def get_companies():
         sharia_map = get_sharia_status_map()
 
         companies = data.get("companies", [])
+        # Enrich companies with latest data and sharia status
         for c in companies:
             code = c.get("code")
             is_sh = sharia_map.get(code, False)
@@ -323,8 +346,77 @@ async def get_companies():
                     c["dca_rating"] = "🚨 HINDARI (Rugi Bersih)"
                 elif "DISTORTED_LEVERAGE_ROE" in forensics.get("flags", []):
                     c["dca_rating"] = "🚨 HINDARI (Leverage Ekstrem)"
-        return companies
-    return []
+        
+        # Apply filtering
+        filtered_companies = []
+        for c in companies:
+            keep = True
+
+            # Category filtering
+            if category:
+                if category == "dca_prime":
+                    if c.get("dca_verdict") != "PRIME_DCA":
+                        keep = False
+                elif category == "smart_money":
+                    if not c.get("is_smart_money_inflow", False):
+                        keep = False
+                elif category == "dividends":
+                    if c.get("dividend_yield_pct", 0) < 3.0 or c.get("is_value_trap", False):
+                        keep = False
+                elif category == "value":
+                    if c.get("valuation_status") != "SECTOR_UNDERVALUED" and c.get("valuation_status") != "UNDERVALUED":
+                        keep = False
+                elif category == "danger":
+                    if not c.get("is_value_trap", False) and not (c.get("roe", 0) < 0) and not (c.get("npm", 0) < 0):
+                        keep = False
+                elif category == "sharia":
+                    if not c.get("is_sharia", False):
+                        keep = False
+
+            # Search filtering
+            if search and not (search.lower() in c.get("code", "").lower() or search.lower() in c.get("name", "").lower()):
+                keep = False
+
+            # Metric filtering
+            if min_score is not None and c.get("compounder_score", 0) < min_score:
+                keep = False
+            if max_per is not None and (c.get("per") is None or c.get("per", 0) > max_per or c.get("per", 0) <= 0):
+                keep = False
+            if min_roe is not None and (c.get("roe") is None or c.get("roe", 0) < min_roe):
+                keep = False
+            if min_yield is not None and (c.get("dividend_yield_pct") is None or c.get("dividend_yield_pct", 0) < min_yield):
+                keep = False
+            if is_sharia is not None and c.get("is_sharia") != is_sharia:
+                keep = False
+            
+            if keep:
+                filtered_companies.append(c)
+
+        # Apply sorting
+        if sort_by:
+            def get_sort_key(item):
+                val = item.get(sort_by, 0)
+                if sort_by == "per": # PER needs special handling for 0 or negative values
+                    return val if val > 0 else float('inf')
+                return val
+
+            filtered_companies.sort(key=get_sort_key, reverse=(sort_dir == "desc"))
+
+        # Apply pagination
+        total_count = len(filtered_companies)
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+        paginated_companies = filtered_companies[start_index:end_index]
+
+        out = {
+            "companies": paginated_companies,
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size,
+        }
+        set_in_cache(cache_key, out)
+        return out
+    return {"companies": [], "total_count": 0, "page": page, "page_size": page_size}
 
 
 @app.get("/api/compounder-screen", tags=["Intelligence"])
@@ -337,6 +429,11 @@ async def get_compounder_screen(
     limit: int = Query(50, description="Max results to return"),
 ):
     """Return top long-term DCA compounders screened for forensic health and sector-aware valuation."""
+    cache_key = f"compounder_screen:{min_score}:{exclude_traps}:{category}:{limit}"
+    cached = get_from_cache(cache_key, ttl_seconds=60.0)
+    if cached:
+        return cached
+
     alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
     if not os.path.exists(alpha_file):
         return []
@@ -357,7 +454,9 @@ async def get_compounder_screen(
         results.append(c)
 
     results.sort(key=lambda x: x.get("compounder_score", 0), reverse=True)
-    return results[:limit]
+    out = results[:limit]
+    set_in_cache(cache_key, out)
+    return out
 
 
 @app.get("/api/signals", tags=["Signals"])
@@ -535,6 +634,11 @@ async def get_stock_blocks(ticker: str):
     from idx.signals import INSTITUTIONAL_BROKERS, RETAIL_BROKERS
 
     ticker = validate_ticker(ticker)
+    cache_key = f"stock_blocks:{ticker}"
+    cached = get_from_cache(cache_key, ttl_seconds=60.0)
+    if cached:
+        return cached
+
     df = query_dataset("stock_summary", where=f"StockCode = '{ticker}'")
     if len(df) == 0:
         raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' not found.")
@@ -692,7 +796,7 @@ async def get_stock_blocks(ticker: str):
         else (100.0 if nff_val >= 0 else 0.0)
     )
 
-    return {
+    res = {
         "ticker": ticker,
         "date": session_date,
         "total_turnover_rp": reg_val,
@@ -704,6 +808,8 @@ async def get_stock_blocks(ticker: str):
         "smart_accumulation_ratio": smart_ratio,
         "blocks": blocks,
     }
+    set_in_cache(cache_key, res)
+    return res
 
 
 @app.get("/api/broker-flow", tags=["Bandarmology"])
@@ -730,6 +836,11 @@ async def get_peers(ticker: str):
     import pandas as pd
 
     ticker = validate_ticker(ticker)
+    cache_key = f"peers:{ticker}"
+    cached = get_from_cache(cache_key, ttl_seconds=120.0)
+    if cached:
+        return cached
+
     ratios_path = os.path.join(DATA_DIR, "parquet", "financial_ratios.parquet")
     if not os.path.exists(ratios_path):
         raise HTTPException(status_code=404, detail="Financial ratios parquet not found.")
@@ -742,7 +853,9 @@ async def get_peers(ticker: str):
     
     sector = stock_row.iloc[0].get("sector")
     peers = latest[(latest["sector"] == sector) & (latest["code"] != ticker)]
-    return clean_dict_records(peers.to_dict("records"))
+    res = clean_dict_records(peers.to_dict("records"))
+    set_in_cache(cache_key, res)
+    return res
 
 
 @app.get("/api/dividend/{ticker}", tags=["Dividends"])
@@ -750,9 +863,15 @@ async def get_dividend_analysis(ticker: str):
     from idx.dividend import analyze_stock_dividend
 
     ticker = validate_ticker(ticker)
+    cache_key = f"dividend:{ticker}"
+    cached = get_from_cache(cache_key, ttl_seconds=120.0)
+    if cached:
+        return cached
+
     res = analyze_stock_dividend(ticker)
     if not res.get("has_dividend"):
         raise HTTPException(status_code=404, detail=res.get("message", "Dividend data not found"))
+    set_in_cache(cache_key, res)
     return res
 
 
@@ -760,6 +879,11 @@ async def get_dividend_analysis(ticker: str):
 @app.get("/api/dividend/screen", tags=["Dividends"])
 async def screen_dividends(min_yield: float = 3.0, year: str = "2026", limit: int = 25):
     from idx.dividend import screen_upcoming_dividends
+
+    cache_key = f"dividend_screen:{min_yield}:{year}:{limit}"
+    cached = get_from_cache(cache_key, ttl_seconds=120.0)
+    if cached:
+        return cached
 
     df = screen_upcoming_dividends(min_yield=min_yield, year_filter=year, limit=limit)
     records = df.to_dict("records")
@@ -772,12 +896,19 @@ async def screen_dividends(min_yield: float = 3.0, year: str = "2026", limit: in
         r["PayoutRatio"] = r.get("DPR%")
         r["TrapRiskScore"] = r.get("TrapScore")
         r["Recommendation"] = r.get("Verdict")
-    return clean_dict_records(records)
+    out = clean_dict_records(records)
+    set_in_cache(cache_key, out)
+    return out
 
 
 @app.get("/api/drift", tags=["Ownership"])
 async def get_drift():
-    return get_latest_shareholder_drift()
+    cached = get_from_cache("shareholder_drift", ttl_seconds=300.0) # Cache for 5 minutes
+    if cached:
+        return cached
+    res = get_latest_shareholder_drift()
+    set_in_cache("shareholder_drift", res)
+    return res
 
 
 @app.get("/api/graph/ubo/{ticker}", tags=["Knowledge Graph"])
@@ -789,34 +920,57 @@ async def get_ubo(ticker: str):
 @app.get("/api/graph/network/{ticker}", tags=["Knowledge Graph"])
 async def get_network(ticker: str):
     ticker = validate_ticker(ticker)
+    cache_key = f"network_graph:{ticker}"
+    cached = get_from_cache(cache_key, ttl_seconds=300.0)
+    if cached:
+        return cached
     data = get_company_network(ticker)
     if not data.get("nodes"):
         raise HTTPException(status_code=404, detail=f"No graph network found for {ticker}")
+    set_in_cache(cache_key, data)
     return data
 
 
 @app.get("/api/graph/centrality", tags=["Knowledge Graph"])
 async def get_centrality(top_n: int = 20):
+    cache_key = f"centrality:{top_n}"
+    cached = get_from_cache(cache_key, ttl_seconds=300.0)
+    if cached:
+        return cached
     df = calculate_board_centrality(top_n=top_n)
-    return clean_dict_records(df.to_dict(orient="records"))
+    res = clean_dict_records(df.to_dict(orient="records"))
+    set_in_cache(cache_key, res)
+    return res
 
 
 @app.get("/api/graph/cross-holdings", tags=["Knowledge Graph"])
 async def get_cross():
-    return detect_cross_holdings()
+    cache_key = "cross_holdings"
+    cached = get_from_cache(cache_key, ttl_seconds=300.0)
+    if cached:
+        return cached
+    res = detect_cross_holdings()
+    set_in_cache(cache_key, res)
+    return res
 
 
 @app.get("/api/power-map", tags=["Knowledge Graph"])
 async def get_power_map(top_centrality: int = 20):
+    cache_key = f"power_map:{top_centrality}"
+    cached = get_from_cache(cache_key, ttl_seconds=300.0)
+    if cached:
+        return cached
+
     centrality_df = calculate_board_centrality(top_n=top_centrality)
     cross = detect_cross_holdings()
     drift = get_latest_shareholder_drift()
-    return {
+    res = {
         "centrality": clean_dict_records(centrality_df.to_dict(orient="records")),
         "cross_holdings": cross,
         "drift": drift,
     }
-
+    set_in_cache(cache_key, res)
+    return res
 
 @app.post("/api/query/sql", tags=["Analytics"])
 async def execute_sql(req: SQLQueryRequest):

@@ -76,14 +76,14 @@ export const ChartTab: React.FC<ChartTabProps> = ({
   const [showEma50, setShowEma50] = useState<boolean>(true);
   const [showBollinger, setShowBollinger] = useState<boolean>(false);
   const [showForeignFlow, setShowForeignFlow] = useState<boolean>(true);
-  const [timeRange, setTimeRange] = useState<'1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y' | 'ALL'>('ALL');
+  const [timeRange, setTimeRange] = useState<'1D' | '1W' | '1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y' | 'ALL'>('ALL');
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
 
   const applyTimeRange = (
-    range: '1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y' | 'ALL',
+    range: '1D' | '1W' | '1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y' | 'ALL',
     chart = chartInstanceRef.current,
     records = stockRecords
   ) => {
@@ -98,7 +98,11 @@ export const ChartTab: React.FC<ChartTabProps> = ({
     const n = records.length;
     let fromIndex = 0;
 
-    if (range === '1M') {
+    if (range === '1D') {
+      fromIndex = Math.max(0, n - 1);
+    } else if (range === '1W') {
+      fromIndex = Math.max(0, n - 5);
+    } else if (range === '1M') {
       fromIndex = Math.max(0, n - 22);
     } else if (range === '3M') {
       fromIndex = Math.max(0, n - 66);
@@ -432,6 +436,47 @@ export const ChartTab: React.FC<ChartTabProps> = ({
   const prevPrice = latestData?.Previous ?? latestData?.previous_price ?? company?.previous_price;
   const dailyChange = prevPrice && currentPrice ? currentPrice - prevPrice : latestData?.Change ?? company?.daily_change ?? 0;
   const changePct = prevPrice && prevPrice > 0 ? (dailyChange / prevPrice) * 100 : 0;
+
+  // Selected range performance calculation (% and nominal price change)
+  const rangePerformance = useMemo(() => {
+    if (!stockRecords || stockRecords.length === 0) return null;
+    const n = stockRecords.length;
+    let fromIndex = 0;
+    if (timeRange === '1D') fromIndex = Math.max(0, n - 1);
+    else if (timeRange === '1W') fromIndex = Math.max(0, n - 5);
+    else if (timeRange === '1M') fromIndex = Math.max(0, n - 22);
+    else if (timeRange === '3M') fromIndex = Math.max(0, n - 66);
+    else if (timeRange === '6M') fromIndex = Math.max(0, n - 132);
+    else if (timeRange === 'YTD') {
+      const latestTime = String(stockRecords[n - 1].time || '');
+      const currentYear = latestTime.slice(0, 4) || new Date().getFullYear().toString();
+      fromIndex = stockRecords.findIndex((r) => String(r.time || '').startsWith(currentYear));
+      if (fromIndex === -1) fromIndex = Math.max(0, n - 66);
+    } else if (timeRange === '1Y') fromIndex = Math.max(0, n - 252);
+    else if (timeRange === '5Y') fromIndex = Math.max(0, n - 1260);
+    else if (timeRange === 'ALL') fromIndex = 0;
+
+    const startRecord = stockRecords[fromIndex];
+    const endRecord = stockRecords[n - 1];
+    if (!startRecord || !endRecord) return null;
+
+    const startPrice = timeRange === '1D'
+      ? (Number(startRecord.Previous ?? startRecord.open ?? startRecord.OpenPrice ?? startRecord.close) || Number(startRecord.close))
+      : Number(startRecord.close ?? startRecord.Close ?? 0);
+    const endPrice = Number(endRecord.close ?? endRecord.Close ?? 0);
+
+    if (startPrice <= 0 || endPrice <= 0) return null;
+    const diff = endPrice - startPrice;
+    const pct = (diff / startPrice) * 100;
+
+    return {
+      startPrice,
+      endPrice,
+      diff,
+      pct,
+      range: timeRange,
+    };
+  }, [stockRecords, timeRange]);
 
   // Real technical indicators from backend
   const rsi = latestData?.RSI14 != null ? Number(latestData.RSI14).toFixed(1) : 'N/A';
@@ -816,7 +861,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             {/* Range Bar */}
             <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255, 255, 255, 0.05)', padding: '2px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-              {(['1M', '3M', '6M', 'YTD', '1Y', '5Y', 'ALL'] as const).map((rng) => (
+              {(['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', '5Y', 'ALL'] as const).map((rng) => (
                 <button
                   key={rng}
                   onClick={() => applyTimeRange(rng)}
@@ -836,6 +881,26 @@ export const ChartTab: React.FC<ChartTabProps> = ({
                 </button>
               ))}
             </div>
+
+            {/* Range Performance Return Pill */}
+            {rangePerformance && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.25rem 0.65rem',
+                borderRadius: '8px',
+                background: rangePerformance.pct >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                border: `1px solid ${rangePerformance.pct >= 0 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`,
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                color: rangePerformance.pct >= 0 ? '#34d399' : '#f87171',
+              }}>
+                <span>{rangePerformance.range}:</span>
+                <span>{rangePerformance.pct >= 0 ? '+' : ''}{rangePerformance.pct.toFixed(2)}%</span>
+                <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>({rangePerformance.diff >= 0 ? '+' : ''}{rangePerformance.diff.toLocaleString()})</span>
+              </div>
+            )}
 
             <div style={{ width: '1px', height: '20px', background: 'rgba(255, 255, 255, 0.15)' }} />
 

@@ -20,12 +20,12 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import type { Company, StealthAnomaly, DividendOpportunity } from '../types';
-import { fetchStealthAccumulation, fetchDividendScreen, fetchDailyBriefing, fetchBrokerFlow } from '../services/api';
+import { fetchStealthAccumulation, fetchDividendScreen, fetchDailyBriefing, fetchBrokerFlow, fetchCompaniesList } from '../services/api';
 import { DailyBriefingModal } from './DailyBriefingModal';
 
 
 interface AlphaHubProps {
-  companies: Company[];
+  companies?: Company[];
   onSelectStock: (ticker: string) => void;
   onOpenMemo: (company: Company) => void;
   isStarred: (code: string) => boolean;
@@ -33,12 +33,14 @@ interface AlphaHubProps {
 }
 
 export const AlphaHub: React.FC<AlphaHubProps> = ({
-  companies,
   onSelectStock,
   onOpenMemo,
   isStarred,
   onToggleStar,
 }) => {
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [totalCompanies, setTotalCompanies] = useState<number>(0);
+  const [loadingCompanies, setLoadingCompanies] = useState<boolean>(true);
   const [activeCategory, setActiveCategory] = useState<'all' | 'dca_prime' | 'smart_money' | 'dividends' | 'value' | 'danger' | 'sharia'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [stealthAnomalies, setStealthAnomalies] = useState<StealthAnomaly[]>([]);
@@ -51,7 +53,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
   // Pagination & Sorting state
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(25);
-  const [sortKey, setSortKey] = useState<string>('score');
+  const [sortKey, setSortKey] = useState<string>('compounder_score');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const handleOpenBriefing = async () => {
@@ -121,6 +123,60 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
   useEffect(() => {
     loadIntelligence();
   }, []);
+
+  // Fetch companies from API based on filters, sort, and pagination
+  useEffect(() => {
+    let isMounted = true;
+    const fetchCompanies = async () => {
+      setLoadingCompanies(true);
+      try {
+        let apiSortBy = sortKey;
+        if ((sortKey === 'compounder_score' || sortKey === 'score')) apiSortBy = 'compounder_score';
+        if ((sortKey === 'price_bv' || sortKey === 'pbv')) apiSortBy = 'price_bv';
+        if ((sortKey === 'yield' || sortKey === 'dividend_yield_pct')) apiSortBy = 'dividend_yield_pct';
+
+        const params: any = {
+          category: activeCategory,
+          search: searchQuery,
+          sort_by: apiSortBy,
+          sort_dir: sortDir,
+          page: currentPage,
+          page_size: pageSize,
+        };
+
+        // Apply specific metric filters based on category
+        if (activeCategory === 'dividends') {
+          params.min_yield = 3.0; // Default min yield for dividend screen
+        } else if (activeCategory === 'value') {
+          params.max_per = 15.0; // Max PER for value stocks
+          params.min_roe = 10.0; // Min ROE for value stocks
+        } else if (activeCategory === 'sharia') {
+          params.is_sharia = true;
+        }
+
+        const data = await fetchCompaniesList(params);
+        if (isMounted) {
+          setCompanies(data.companies || []);
+          setTotalCompanies(data.total_count ?? 0);
+        }
+      } catch (error) {
+        console.error('Failed to fetch companies:', error);
+        if (isMounted) {
+          setCompanies([]);
+          setTotalCompanies(0);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingCompanies(false);
+        }
+      }
+    };
+
+    fetchCompanies();
+    return () => {
+      isMounted = false;
+    };
+  }, [activeCategory, searchQuery, sortKey, sortDir, currentPage, pageSize]);
 
   // Top Action Cards computation
   const topSmartMoney = useMemo(() => {
@@ -227,111 +283,17 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
     return scored.slice(0, 3);
   }, [companies, stealthAnomalies, dividendOpps]);
 
-  // Filtered rows for the table
-  const filteredList = useMemo(() => {
-    const getCompYield = (comp: Company) => {
-      if (comp.yield != null && comp.yield > 0) return comp.yield;
-      if (comp.dividend_yield_pct != null && comp.dividend_yield_pct > 0) return comp.dividend_yield_pct;
-      const divMatch = dividendOpps.find((d) => d.StockCode === comp.code);
-      return divMatch?.DividendYield ?? 0;
-    };
-
-    const list = companies.filter((c: Company) => {
-      // Search text match
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const match = c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || (c.sector && c.sector.toLowerCase().includes(q));
-        if (!match) return false;
-      }
-
-      // Category matching
-      if (activeCategory === 'dca_prime') {
-        return (c.compounder_score ?? 0) >= 70 || c.dca_verdict === 'PRIME_DCA';
-      }
-      if (activeCategory === 'sharia') {
-        return c.sharia === 'S' || (c as any).is_sharia === true;
-      }
-      if (activeCategory === 'smart_money') {
-        return stealthAnomalies.some((a) => a.StockCode === c.code && a.Signal === 'STEALTH_ACCUMULATION');
-      }
-      if (activeCategory === 'dividends') {
-        return getCompYield(c) >= 4.0 || dividendOpps.some((d) => d.StockCode === c.code);
-      }
-      if (activeCategory === 'value') {
-        if (c.is_value_trap) return false;
-        const pbv = c.pbv ?? c.price_bv ?? 99;
-        const roe = c.roe ?? 0;
-        const isSecVal = c.is_undervalued || c.valuation_status === 'SECTOR_UNDERVALUED' || c.valuation_status === 'DEEP_VALUE';
-        return isSecVal || (pbv < 1.5 && roe >= 12.0);
-      }
-      if (activeCategory === 'danger') {
-        const isLoss = (c.roe != null && c.roe < 0) || (c.per != null && c.per < 0) || (c.npm != null && c.npm < 0);
-        const isLowScore = (c.compounder_score != null && c.compounder_score < 25);
-        return (
-          c.is_value_trap ||
-          isLoss ||
-          isLowScore ||
-          stealthAnomalies.some((a) => a.StockCode === c.code && a.Signal === 'RETAIL_TRAP')
-        );
-      }
-
-      return true;
-    });
-
-    list.sort((a: Company, b: Company) => {
-      let valA: any = 0;
-      let valB: any = 0;
-
-      switch (sortKey) {
-        case 'code':
-          return sortDir === 'asc' ? a.code.localeCompare(b.code) : b.code.localeCompare(a.code);
-        case 'price':
-          valA = a.price ?? a.previous_price ?? 0;
-          valB = b.price ?? b.previous_price ?? 0;
-          break;
-        case 'roe':
-          valA = a.roe ?? -999;
-          valB = b.roe ?? -999;
-          break;
-        case 'pbv':
-          valA = a.pbv ?? a.price_bv ?? 999;
-          valB = b.pbv ?? b.price_bv ?? 999;
-          break;
-        case 'yield':
-          valA = getCompYield(a);
-          valB = getCompYield(b);
-          break;
-        case 'score':
-        default:
-          if (activeCategory === 'danger') {
-            valA = a.compounder_score ?? 10;
-            valB = b.compounder_score ?? 10;
-            return sortDir === 'asc' ? valB - valA : valA - valB;
-          }
-          valA = a.compounder_score ?? 0;
-          valB = b.compounder_score ?? 0;
-          break;
-      }
-
-      return sortDir === 'asc' ? valA - valB : valB - valA;
-    });
-
-    return list;
-  }, [companies, activeCategory, searchQuery, stealthAnomalies, dividendOpps, sortKey, sortDir]);
-
-  const totalRows = filteredList.length;
-  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
-  const paginatedList = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredList.slice(start, start + pageSize);
-  }, [filteredList, currentPage, pageSize]);
+  const totalPages = Math.max(1, Math.ceil(totalCompanies / pageSize));
 
   const handleSort = (key: string) => {
-    if (sortKey === key) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    let resolvedKey = key;
+    if (key === 'score') resolvedKey = 'compounder_score';
+    if (key === 'pbv') resolvedKey = 'price_bv';
+    if (sortKey === resolvedKey || sortKey === key) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
-      setSortKey(key);
-      setSortDir(key === 'code' ? 'asc' : 'desc');
+      setSortKey(resolvedKey);
+      setSortDir(resolvedKey === 'code' ? 'asc' : 'desc');
     }
     setCurrentPage(1);
   };
@@ -457,7 +419,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b' }}>
               <Award size={16} style={{ color: '#facc15' }} />
-              <span>Ranked across {companies.length} IDX stocks</span>
+              <span>Ranked across {totalCompanies > 0 ? totalCompanies : companies.length} IDX stocks</span>
             </div>
           </div>
 
@@ -752,7 +714,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
           </div>
 
           <button
-            onClick={() => setActiveCategory('smart_money')}
+            onClick={() => { setActiveCategory('smart_money'); setCurrentPage(1); }}
             style={{
               marginTop: '1rem',
               padding: '0.5rem',
@@ -827,7 +789,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
           </div>
 
           <button
-            onClick={() => setActiveCategory('dividends')}
+            onClick={() => { setActiveCategory('dividends'); setCurrentPage(1); }}
             style={{
               marginTop: '1rem',
               padding: '0.5rem',
@@ -902,7 +864,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
           </div>
 
           <button
-            onClick={() => setActiveCategory('danger')}
+            onClick={() => { setActiveCategory('danger'); setCurrentPage(1); }}
             style={{
               marginTop: '1rem',
               padding: '0.5rem',
@@ -1031,12 +993,12 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
                 </div>
               </th>
               <th
-                onClick={() => handleSort('score')}
+                onClick={() => handleSort('compounder_score')}
                 style={{ padding: '0.75rem 0.5rem', cursor: 'pointer', userSelect: 'none' }}
               >
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   <span>Plain-English Verdict</span>
-                  {sortKey === 'score' ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
+                  {(sortKey === 'compounder_score' || sortKey === 'score') ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
                 </div>
               </th>
               <th
@@ -1049,12 +1011,12 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
                 </div>
               </th>
               <th
-                onClick={() => handleSort('pbv')}
+                onClick={() => handleSort('price_bv')}
                 style={{ padding: '0.75rem 0.5rem', cursor: 'pointer', userSelect: 'none' }}
               >
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   <span>PBV</span>
-                  {sortKey === 'pbv' ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
+                  {(sortKey === 'price_bv' || sortKey === 'pbv') ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
                 </div>
               </th>
               <th
@@ -1063,14 +1025,30 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
               >
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   <span>Yield</span>
-                  {sortKey === 'yield' ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
+                  {(sortKey === 'yield' || sortKey === 'dividend_yield_pct') ? (sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} style={{ opacity: 0.3 }} />}
                 </div>
               </th>
               <th style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>Action</th>
             </tr>
           </thead>
           <tbody>
-            {paginatedList.map((c) => {
+            {loadingCompanies ? (
+              <tr>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '3rem 1rem', color: '#94a3b8' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
+                    <RotateCw size={18} className="spinning" />
+                    <span>Loading opportunities...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : companies.length === 0 ? (
+              <tr>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '3rem 1rem', color: '#64748b' }}>
+                  No companies found matching criteria.
+                </td>
+              </tr>
+            ) : (
+              companies.map((c) => {
               const divMatch = dividendOpps.find((d) => d.StockCode === c.code);
               const stealthMatch = stealthAnomalies.find((a) => a.StockCode === c.code);
               const price = c.price ?? c.previous_price ?? divMatch?.Price ?? 0;
@@ -1262,7 +1240,8 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
                   </td>
                 </tr>
               );
-            })}
+            })
+            )}
           </tbody>
         </table>
 
@@ -1280,9 +1259,15 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
           color: '#94a3b8',
         }}>
           <div>
-            Showing <strong style={{ color: '#f8fafc' }}>{totalRows === 0 ? 0 : (currentPage - 1) * pageSize + 1}</strong> to{' '}
-            <strong style={{ color: '#f8fafc' }}>{Math.min(currentPage * pageSize, totalRows)}</strong> of{' '}
-            <strong style={{ color: '#38bdf8' }}>{totalRows}</strong> companies
+            {loadingCompanies ? (
+              <span>Loading companies...</span>
+            ) : (
+              <>
+                Showing <strong style={{ color: '#f8fafc' }}>{totalCompanies === 0 ? 0 : (currentPage - 1) * pageSize + 1}</strong> to{' '}
+                <strong style={{ color: '#f8fafc' }}>{Math.min(currentPage * pageSize, totalCompanies)}</strong> of{' '}
+                <strong style={{ color: '#38bdf8' }}>{totalCompanies}</strong> companies
+              </>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -1307,21 +1292,20 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
                 <option value={25}>25</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>
-                <option value={1000}>All</option>
               </select>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
+                disabled={currentPage === 1 || loadingCompanies}
                 style={{
-                  background: currentPage === 1 ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.1)',
-                  color: currentPage === 1 ? '#64748b' : '#f8fafc',
+                  background: (currentPage === 1 || loadingCompanies) ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.1)',
+                  color: (currentPage === 1 || loadingCompanies) ? '#64748b' : '#f8fafc',
                   border: '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: '6px',
                   padding: '0.35rem 0.6rem',
-                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  cursor: (currentPage === 1 || loadingCompanies) ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                 }}
@@ -1335,14 +1319,14 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
 
               <button
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage >= totalPages}
+                disabled={currentPage >= totalPages || loadingCompanies}
                 style={{
-                  background: currentPage >= totalPages ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.1)',
-                  color: currentPage >= totalPages ? '#64748b' : '#f8fafc',
+                  background: (currentPage >= totalPages || loadingCompanies) ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.1)',
+                  color: (currentPage >= totalPages || loadingCompanies) ? '#64748b' : '#f8fafc',
                   border: '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: '6px',
                   padding: '0.35rem 0.6rem',
-                  cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                  cursor: (currentPage >= totalPages || loadingCompanies) ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                 }}

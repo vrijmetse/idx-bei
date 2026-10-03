@@ -224,7 +224,11 @@ class TestAPI(unittest.TestCase):
         resp = self.client.get("/api/companies")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertIsInstance(data, list)
+        self.assertIsInstance(data, dict)
+        self.assertIn("companies", data)
+        self.assertIn("total_count", data)
+        self.assertIsInstance(data["companies"], list)
+        self.assertGreater(len(data["companies"]), 0)
 
     def test_stock_blocks_endpoint(self):
         # Existing ticker (e.g. BBCA)
