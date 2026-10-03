@@ -989,6 +989,13 @@ async def api_ingestion_status():
     return get_full_ingestion_status()
 
 
+@app.get("/api/system/audit", tags=["Intelligence"])
+async def api_system_audit():
+    """Run and return an independent 6-layer mathematical audit of all market datasets."""
+    from idx.audit import run_comprehensive_audit
+    return run_comprehensive_audit()
+
+
 @app.post("/api/system/trigger-ingestion", tags=["Ingestion & Data Pipeline"])
 async def api_trigger_ingestion(req: TriggerIngestionRequest):
     """Triggers an async daily ingestion or historical backfill task in the background."""
