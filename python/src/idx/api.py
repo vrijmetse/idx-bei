@@ -506,7 +506,7 @@ async def get_stock_data(ticker: str, limit: int = 500):
 
     ticker = validate_ticker(ticker)
     cache_key = f"stock_data:{ticker}:{limit}"
-    cached = get_from_cache(cache_key)
+    cached = get_from_cache(cache_key, ttl_seconds=1800.0)
     if cached:
         return cached
 
@@ -551,15 +551,20 @@ async def get_stock_data(ticker: str, limit: int = 500):
     records = clean_dict_records(clean_df.to_dict(orient="records"))
     latest = records[-1] if records else {}
 
-    # Augment with latest intraday candle from Yahoo Finance if today's EOD is pending
+    # Augment with latest intraday candle from Yahoo Finance ONLY during active trading hours (WIB Mon-Fri 09:00 - 16:30)
     try:
         import datetime
         import yfinance as yf
 
-        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-        if records and records[-1].get("time") != today_str:
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        now_wib = now_utc + datetime.timedelta(hours=7)
+        is_trading_day = now_wib.weekday() < 5  # Mon-Fri
+        is_market_active = is_trading_day and (9 <= now_wib.hour < 17)
+
+        today_str = now_wib.strftime("%Y-%m-%d")
+        if is_market_active and records and records[-1].get("time") != today_str:
             yf_stock = yf.Ticker(f"{ticker}.JK")
-            hist = yf_stock.history(period="1d", interval="1d")
+            hist = yf_stock.history(period="1d", interval="1d", timeout=1.5)
             if not hist.empty:
                 last_row = hist.iloc[-1]
                 intraday_date = last_row.name.strftime("%Y-%m-%d")
@@ -585,49 +590,33 @@ async def get_stock_data(ticker: str, limit: int = 500):
     except Exception:
         pass
 
-    # Look up profile, financials, and decision metrics
+    # Look up profile, financials, and decision metrics directly from in-memory hydrated cache (0ms)
     profile = {}
     financials = {}
     decision = {}
     try:
-        alpha_file = os.path.join(DATA_DIR, "network_alpha_data.json")
-        if os.path.exists(alpha_file):
-            c_data = load_json(alpha_file)
-            for c in c_data.get("companies", []):
-                if c.get("code") == ticker:
-                    profile = {
-                        "name": c.get("name"),
-                        "sector": c.get("sector"),
-                        "conglomerate": c.get("conglomerate"),
-                    }
-                    div_map = get_dividend_summary_map()
-                    d_info = div_map.get(ticker, {})
-                    financials = {
-                        "per": c.get("per"),
-                        "price_bv": c.get("price_bv") or c.get("pbv"),
-                        "roe": c.get("roe"),
-                        "de_ratio": c.get("de_ratio"),
-                        "dividend_yield_pct": d_info.get("yield") or c.get("dividend_yield_pct"),
-                        "annualized_dps": d_info.get("dps") or c.get("annualized_dps"),
-                    }
-                    from idx.compounder import evaluate_forensics, calculate_dca_compounder_score
-                    forensics = evaluate_forensics(c)
-                    if forensics.get("is_value_trap"):
-                        dca = calculate_dca_compounder_score(c, forensics, {})
-                        decision = {
-                            "compounder_score": dca.get("score", 10.0),
-                            "dca_verdict": dca.get("verdict", "VALUE_TRAP"),
-                            "dca_rating": dca.get("dca_rating", "🚨 HINDARI (Value Trap)"),
-                            "is_value_trap": True,
-                        }
-                    else:
-                        decision = {
-                            "compounder_score": c.get("compounder_score"),
-                            "dca_verdict": c.get("dca_verdict"),
-                            "dca_rating": c.get("dca_rating"),
-                            "is_value_trap": c.get("is_value_trap", False),
-                        }
-                    break
+        for c in get_all_hydrated_companies():
+            if c.get("code") == ticker:
+                profile = {
+                    "name": c.get("name"),
+                    "sector": c.get("sector"),
+                    "conglomerate": c.get("conglomerate"),
+                }
+                financials = {
+                    "per": c.get("per"),
+                    "price_bv": c.get("price_bv") or c.get("pbv"),
+                    "roe": c.get("roe"),
+                    "de_ratio": c.get("de_ratio"),
+                    "dividend_yield_pct": c.get("dividend_yield_pct") or c.get("yield"),
+                    "annualized_dps": c.get("annualized_dps"),
+                }
+                decision = {
+                    "compounder_score": c.get("compounder_score"),
+                    "dca_verdict": c.get("dca_verdict"),
+                    "dca_rating": c.get("dca_rating"),
+                    "is_value_trap": c.get("is_value_trap", False),
+                }
+                break
     except Exception:
         pass
 
@@ -1046,7 +1035,7 @@ async def get_stealth_accumulation(
     min_turnover_rp: float = 1e9,
 ):
     cache_key = f"stealth:{date or 'latest'}:{lookback_days}:{min_turnover_rp}"
-    cached = get_from_cache(cache_key, ttl_seconds=60.0)
+    cached = get_from_cache(cache_key, ttl_seconds=1800.0)
     if cached is not None:
         return cached
 
@@ -1324,12 +1313,24 @@ async def live_price_streamer():
         await asyncio.sleep(20)
 
 
+def prewarm_cache():
+    """Background task on startup to pre-warm all heavy caches in memory."""
+    try:
+        logger.info("Pre-warming in-memory caches...")
+        get_all_hydrated_companies()
+        get_dividend_summary_map()
+        get_stealth_accumulation_map()
+        logger.info("In-memory caches successfully pre-warmed.")
+    except Exception as e:
+        logger.warning(f"Error during prewarm_cache: {e}")
+
+
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(live_price_streamer())
-    # Pre-warm hydrated companies cache in background so first user request is instant
+    # Pre-warm hydrated companies & bandarmology caches in background so first user request is instant
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, get_all_hydrated_companies)
+    loop.run_in_executor(None, prewarm_cache)
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8000):

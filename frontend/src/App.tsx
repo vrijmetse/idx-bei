@@ -211,18 +211,18 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {loading && !data && (
+        {loading && !data && activeTab !== 'opportunities' && (
           <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>
             <p style={{ fontSize: '1.2rem' }}>Loading quantitative intelligence...</p>
           </div>
         )}
 
-        {data && (
+        {(data || activeTab === 'opportunities') && (
           <Suspense fallback={<TabFallback />}>
             {/* 1. Alpha Finder (Opportunities Hub) */}
             {activeTab === 'opportunities' && (
               <AlphaHub
-                companies={data.companies}
+                companies={data?.companies || []}
                 onSelectStock={handleSelectStock}
                 onOpenMemo={handleOpenMemo}
                 isStarred={isStarred}
@@ -231,7 +231,7 @@ export const App: React.FC = () => {
             )}
 
             {/* 2. Stock Terminal (TradingView Charts & Indicators & Order Flow) */}
-            {activeTab === 'terminal' && (
+            {activeTab === 'terminal' && data && (
               <ChartTab
                 companies={data.companies}
                 selectedTicker={selectedTicker}
@@ -244,7 +244,7 @@ export const App: React.FC = () => {
             )}
 
             {/* 3. Tycoons & Power Map (Super-Insiders, Conglomerates, & UBO Graph) */}
-            {activeTab === 'power_map' && (
+            {activeTab === 'power_map' && data && (
               <PowerMapTab
                 companies={data.companies}
                 superInsiders={data.super_insiders}
