@@ -264,6 +264,15 @@ class TestAPI(unittest.TestCase):
         for c in data["companies"]:
             self.assertFalse(c.get("is_value_trap", False))
 
+    def test_companies_sorting_with_null_and_edge_values(self):
+        """Ensure sorting across any metric (roe, per, pbv, yield) handles None without 500 crash."""
+        for sort_metric in ["roe", "price_bv", "per", "dividend_yield_pct", "compounder_score", "code", "price"]:
+            for sort_dir in ["asc", "desc"]:
+                resp = self.client.get(f"/api/companies?sort_by={sort_metric}&sort_dir={sort_dir}&page=1&page_size=25")
+                self.assertEqual(resp.status_code, 200, f"Sorting by {sort_metric} {sort_dir} failed with {resp.status_code}")
+                data = resp.json()
+                self.assertEqual(len(data["companies"]), 25)
+
     def test_stock_blocks_endpoint(self):
         # Existing ticker (e.g. BBCA)
         resp = self.client.get("/api/stock/BBCA/blocks")

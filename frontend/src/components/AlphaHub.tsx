@@ -39,6 +39,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
   onToggleStar,
 }) => {
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [championPool, setChampionPool] = useState<Company[]>([]);
   const [totalCompanies, setTotalCompanies] = useState<number>(0);
   const [loadingCompanies, setLoadingCompanies] = useState<boolean>(true);
   const [activeCategory, setActiveCategory] = useState<'all' | 'dca_prime' | 'smart_money' | 'dividends' | 'value' | 'danger' | 'sharia'>('all');
@@ -131,6 +132,14 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
 
   useEffect(() => {
     loadIntelligence();
+    // Load top compounder candidates so Champion Compounders banner is resilient across table filters
+    fetchCompaniesList({ category: 'dca_prime', sort_by: 'compounder_score', sort_dir: 'desc', page: 1, page_size: 25 })
+      .then((data) => {
+        if (data.companies && data.companies.length > 0) {
+          setChampionPool(data.companies);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Fetch companies from API based on filters, sort, and pagination
@@ -190,9 +199,16 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
   // Top Action Cards computation
   const topSmartMoney = useMemo(() => {
     return stealthAnomalies
-      .filter((a) => a.Signal === 'STEALTH_ACCUMULATION' && !['PADI', 'BEST', 'PSKT'].includes(a.StockCode))
+      .filter((a) => {
+        if (a.Signal !== 'STEALTH_ACCUMULATION') return false;
+        const pool = championPool.length > 0 ? championPool : companies;
+        const matched = pool.find((c) => c.code === a.StockCode);
+        if (matched?.is_value_trap || (matched?.roe != null && matched.roe < 0)) return false;
+        if (['PADI', 'BEST', 'PSKT'].includes(a.StockCode)) return false;
+        return true;
+      })
       .slice(0, 3);
-  }, [stealthAnomalies]);
+  }, [stealthAnomalies, championPool, companies]);
 
   const topDividends = useMemo(() => {
     return dividendOpps.filter((d) => (d.TrapScore ?? 0) <= 35 && d.DividendYield >= 5.0).slice(0, 3);
@@ -204,9 +220,10 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
 
   // Top 3 High-Conviction Champion Compounders auto-ranker
   const topChampions = useMemo(() => {
-    if (!companies || companies.length === 0) return [];
+    const compPool = championPool.length > 0 ? championPool : companies;
+    if (!compPool || compPool.length === 0) return [];
 
-    const scored = companies.map((c) => {
+    const scored = compPool.map((c) => {
       const divMatch = dividendOpps.find((d) => d.StockCode === c.code);
       const stealthMatch = stealthAnomalies.find((a) => a.StockCode === c.code);
       const roe = c.roe ?? 0;
@@ -292,7 +309,7 @@ export const AlphaHub: React.FC<AlphaHubProps> = ({
 
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, 3);
-  }, [companies, stealthAnomalies, dividendOpps]);
+  }, [championPool, companies, stealthAnomalies, dividendOpps]);
 
   const totalPages = Math.max(1, Math.ceil(totalCompanies / pageSize));
 

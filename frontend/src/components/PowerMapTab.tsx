@@ -34,6 +34,13 @@ export const PowerMapTab: React.FC<PowerMapTabProps> = ({
   const [graphTicker, setGraphTicker] = useState<string>('BBCA');
   const [tickerInput, setTickerInput] = useState<string>('');
 
+  // Auto-select first tycoon when data arrives asynchronously
+  useEffect(() => {
+    if (!selectedInsider && superInsiders && superInsiders.length > 0) {
+      setSelectedInsider(superInsiders[0]);
+    }
+  }, [superInsiders, selectedInsider]);
+
   const [networkData, setNetworkData] = useState<any>(null);
   const [isLoadingGraph, setIsLoadingGraph] = useState<boolean>(false);
   const [powerbrokers, setPowerbrokers] = useState<any[]>([]);

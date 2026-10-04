@@ -430,10 +430,16 @@ async def get_companies(
         # Apply sorting
         if sort_by:
             def get_sort_key(item):
-                val = item.get(sort_by, 0)
-                if sort_by == "per": # PER needs special handling for 0 or negative values
-                    return val if val > 0 else float('inf')
-                return val
+                raw = item.get(sort_by)
+                if raw is None:
+                    return float("-inf") if sort_dir == "desc" else float("inf")
+                try:
+                    val = float(raw)
+                    if sort_by == "per":  # PER needs special handling for 0 or negative values
+                        return val if val > 0 else float("inf")
+                    return val
+                except (ValueError, TypeError):
+                    return str(raw).lower()
 
             filtered_companies.sort(key=get_sort_key, reverse=(sort_dir == "desc"))
 
