@@ -24,7 +24,8 @@ import {
   AlertCircle, 
   FileText, 
   Star,
-  Radio
+  Radio,
+  Scale
 } from 'lucide-react';
 import type { Company, StreamEvent } from '../types';
 import { fetchStockData, fetchStockBlocks } from '../services/api';
@@ -490,6 +491,20 @@ export const ChartTab: React.FC<ChartTabProps> = ({
   const foreignBuy = Number(latestData?.ForeignBuy || 0);
   const foreignSell = Number(latestData?.ForeignSell || 0);
   const netForeign = foreignBuy - foreignSell;
+
+  // Real order book closing queue (Bid vs Offer)
+  const bidPrice = Number(latestData?.Bid || 0);
+  const bidVolShares = Number(latestData?.BidVolume || 0);
+  const bidLots = Math.round(bidVolShares / 100);
+
+  const offerPrice = Number(latestData?.Offer || 0);
+  const offerVolShares = Number(latestData?.OfferVolume || 0);
+  const offerLots = Math.round(offerVolShares / 100);
+
+  const totalOrderBookShares = bidVolShares + offerVolShares;
+  const bidPct = totalOrderBookShares > 0 ? Math.round((bidVolShares / totalOrderBookShares) * 100) : 50;
+  const offerPct = 100 - bidPct;
+  const queueRatio = offerLots > 0 ? (bidLots / offerLots).toFixed(1) : (bidLots > 0 ? '>10' : '1.0');
 
   // Newbie Decision Intelligence Computation
   const priceNum = Number(currentPrice);
@@ -1003,40 +1018,68 @@ export const ChartTab: React.FC<ChartTabProps> = ({
         />
       </div>
 
-      {/* Real Technical Summary & Foreign Flow Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+      {/* Real Technical Summary, Foreign Flow, & Closing Order Book Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+        {/* Card 1: Antrean Beli vs Jual (Order Book) */}
         <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Gauge size={18} style={{ color: 'var(--accent-green)' }} /> Real Vectorized Technical Indicators
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.85rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Scale size={18} style={{ color: 'var(--accent-blue)' }} /> Antrean Beli vs Jual (Order Book)
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
-            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>RSI (14)</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-blue)' }}>
-                {rsi} <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>({rsiStatus})</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+              <div>
+                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.75rem' }}>Antrean Beli (Bid)</span>
+                <strong style={{ color: 'var(--accent-green)', fontSize: '1.15rem', fontFamily: 'monospace' }}>
+                  {bidPrice > 0 ? `Rp ${bidPrice.toLocaleString()}` : '-'}
+                </strong>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '2px' }}>
+                  {bidLots.toLocaleString()} Lot ({bidPct}%)
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.75rem' }}>Antrean Jual (Offer)</span>
+                <strong style={{ color: 'var(--accent-red)', fontSize: '1.15rem', fontFamily: 'monospace' }}>
+                  {offerPrice > 0 ? `Rp ${offerPrice.toLocaleString()}` : '-'}
+                </strong>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '2px' }}>
+                  {offerLots.toLocaleString()} Lot ({offerPct}%)
+                </div>
               </div>
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Trend Regime</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: trend.includes('BULLISH') ? 'var(--accent-green)' : trend.includes('BEARISH') ? 'var(--accent-red)' : '#fff' }}>
-                {trend}
-              </div>
+
+            {/* Thickness Comparison Progress Bar */}
+            <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden', display: 'flex' }}>
+              <div style={{ width: `${bidPct}%`, background: 'var(--accent-green)', transition: 'width 0.3s ease' }} />
+              <div style={{ width: `${offerPct}%`, background: 'var(--accent-red)', transition: 'width 0.3s ease' }} />
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>EMA-20 / EMA-50</div>
-              <div style={{ fontSize: '1rem', fontWeight: 600, color: '#fff' }}>
-                {ema20} / {ema50}
-              </div>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>20-Day Volume Ratio</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-orange)' }}>
-                {volRatio}
-              </div>
+
+            {/* Beginner-friendly explanation */}
+            <div style={{
+              marginTop: '0.25rem',
+              padding: '0.55rem 0.75rem',
+              background: 'rgba(255,255,255,0.02)',
+              borderRadius: '6px',
+              borderLeft: `3px solid ${bidLots > offerLots ? 'var(--accent-green)' : offerLots > bidLots ? 'var(--accent-red)' : 'var(--text-secondary)'}`,
+              fontSize: '0.8rem',
+              lineHeight: 1.4,
+              color: 'var(--text-secondary)'
+            }}>
+              {bidLots > offerLots ? (
+                <span>
+                  <strong style={{ color: '#fff' }}>Antrean Beli {queueRatio}x lebih tebal.</strong> Pembeli dominan menahan harga di Rp {bidPrice.toLocaleString()}.
+                </span>
+              ) : offerLots > bidLots ? (
+                <span>
+                  <strong style={{ color: '#fff' }}>Antrean Jual {queueRatio}x lebih tebal.</strong> Penjual membendung kenaikan di Rp {offerPrice.toLocaleString()}.
+                </span>
+              ) : (
+                <span>Kekuatan antrean beli dan jual seimbang di penutupan.</span>
+              )}
             </div>
           </div>
         </div>
 
+        {/* Card 2: Foreign Flow Footprint */}
         <div className="glass-card">
           <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Building size={18} style={{ color: 'var(--accent-purple)' }} /> Institutional Foreign Flow Footprint
@@ -1066,6 +1109,51 @@ export const ChartTab: React.FC<ChartTabProps> = ({
               >
                 {netForeign >= 0 ? '+' : ''}{(netForeign / 1000000).toFixed(2)}M shares ({netForeign >= 0 ? 'Accumulation' : 'Distribution'})
               </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Real Vectorized Technical Indicators */}
+        <div className="glass-card">
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Gauge size={18} style={{ color: 'var(--accent-green)' }} /> Real Vectorized Technical Indicators
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>RSI (14)</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-blue)' }}>
+                {rsi} <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>({rsiStatus})</span>
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', marginTop: '2px' }}>
+                &lt;30 Jenuh Jual • &gt;70 Jenuh Beli
+              </div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Trend Regime</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 700, color: trend.includes('BULLISH') ? 'var(--accent-green)' : trend.includes('BEARISH') ? 'var(--accent-red)' : '#fff' }}>
+                {trend}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', marginTop: '2px' }}>
+                Arah Tren Utama
+              </div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>EMA-20 / EMA-50</div>
+              <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff' }}>
+                {ema20} / {ema50}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', marginTop: '2px' }}>
+                Rata-rata Modal 1 & 2.5 Bln
+              </div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>20-Day Volume Ratio</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-orange)' }}>
+                {volRatio}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', marginTop: '2px' }}>
+                &gt;1.5x Ramai • &lt;0.8x Sepi
+              </div>
             </div>
           </div>
         </div>
