@@ -122,6 +122,9 @@ def build_parser():
     p_daily.add_argument(
         "date", nargs="?", default=None, metavar="YYYYMMDD", help="Optional date override"
     )
+    p_daily.add_argument(
+        "--force", action="store_true", help="Force overwrite existing partitions"
+    )
 
     # 6. Signals & Bandarmology
     p_signals = sub.add_parser(
@@ -484,7 +487,7 @@ def main(argv=None):
                 print(df.to_string(index=False))
     elif cmd == "daily":
         print(f"=== Daily Ingestion ({args.date or 'today'}) ===")
-        ingest_daily(date=args.date)
+        ingest_daily(date=args.date, force=args.force)
     elif cmd == "backtest":
         from idx.backtest import run_backtest
 

@@ -29,14 +29,14 @@ def _today_str():
     return datetime.datetime.now().strftime("%Y%m%d")
 
 
-def _ingest_dataset(client, dataset, endpoint, date, date_iso):
+def _ingest_dataset(client, dataset, endpoint, date, date_iso, force=False):
     """Fetches one trading-summary dataset for a date and writes its partition.
 
     Returns:
         dict with 'status' and record counts.
     """
     have = ts.existing_dates(dataset)
-    if date_iso in have:
+    if not force and date_iso in have:
         log.info("%s for %s already exists, skipping", dataset, date_iso)
         return {"status": "skipped"}
 
@@ -56,21 +56,25 @@ def _ingest_dataset(client, dataset, endpoint, date, date_iso):
     return {"status": "ok", "records": len(records)}
 
 
-def ingest_daily(date=None, client=None, export_parquet=True):
+def ingest_daily(date=None, client=None, export_parquet=True, force=False):
     """Fetches stock/broker/index summaries for a date and appends to the time-series store.
 
     Args:
         date:            Override date in YYYYMMDD format (for backfill/testing)
         client:          Optional IDXClient instance
         export_parquet:  If True, re-export consolidated Parquet files after ingestion
+        force:           If True, overwrite existing partition (e.g. session 2 overwriting session 1)
 
     Returns:
         Summary dict with ingestion results
     """
     if client is None:
         client = IDXClient()
-    if date is None:
+    
+    is_today = date is None
+    if is_today:
         date = _today_str()
+        force = True  # Always allow re-ingesting/updating today's session progress
 
     clean_date = date.replace("-", "").strip()
     date_iso = f"{clean_date[:4]}-{clean_date[4:6]}-{clean_date[6:8]}"
@@ -78,7 +82,7 @@ def ingest_daily(date=None, client=None, export_parquet=True):
     results: dict[str, Any] = {}
 
     log.info("=" * 60)
-    log.info("Daily ingestion started for %s", date_iso)
+    log.info("Daily ingestion started for %s (force=%s)", date_iso, force)
     log.info("=" * 60)
 
     # One-time migration from legacy monolithic JSON (no-op if already done)
@@ -93,7 +97,7 @@ def ingest_daily(date=None, client=None, export_parquet=True):
     ]
     for dataset, endpoint in datasets:
         try:
-            results[dataset] = _ingest_dataset(client, dataset, endpoint, date, date_iso)
+            results[dataset] = _ingest_dataset(client, dataset, endpoint, date, date_iso, force=force)
         except Exception as exc:
             log.error("%s ingestion failed: %s", dataset, exc)
             results[dataset] = {"status": "error", "message": str(exc)}
