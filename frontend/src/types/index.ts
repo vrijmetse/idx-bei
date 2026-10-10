@@ -1,6 +1,7 @@
 export type TabType =
   | 'opportunities'
   | 'terminal'
+  | 'global_etfs'
   | 'power_map'
   | 'simulator'
   | 'ingestion';

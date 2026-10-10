@@ -460,6 +460,30 @@ async def get_companies(
     return {"companies": [], "total_count": 0, "page": page, "page_size": page_size}
 
 
+# ── Global ETFs & Pluang Radar ─────────────────────────────────────────
+from idx.core.etf import get_all_global_etfs, get_etf_detail
+
+@app.get("/api/etfs", tags=["Global ETFs"])
+async def list_global_etfs(category: str | None = Query(None)):
+    """Returns curated list of US ETFs available on Pluang with real returns, W-8BEN 15% net yield, and NAV decay risk."""
+    etfs = get_all_global_etfs()
+    if category and category != "all":
+        etfs = [e for e in etfs if e.get("category") == category]
+    return {"etfs": etfs, "total": len(etfs)}
+
+
+@app.get("/api/etf/{ticker}", tags=["Global ETFs"])
+async def get_single_etf(ticker: str):
+    """Returns detail for a single ETF ticker."""
+    data = get_etf_detail(ticker)
+    if not data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"ETF '{ticker}' not found in Global Universe. Available: SMH, QQQ, VOO, JEPQ, QQQI, SPYI, SCHD, GLD, AMDY, MSTY"
+        )
+    return data
+
+
 @app.get("/api/compounder-screen", tags=["Intelligence"])
 async def get_compounder_screen(
     min_score: float = Query(60.0, description="Minimum DCA Compounder Score (0-100)"),

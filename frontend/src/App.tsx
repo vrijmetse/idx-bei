@@ -9,6 +9,7 @@ import type { TabType, Company, LiveAlert } from './types';
 
 // Code-split heavy sub-panels and visualization graphs
 const ChartTab = lazy(() => import('./components/ChartTab').then(m => ({ default: m.ChartTab })));
+const GlobalEtfTab = lazy(() => import('./components/GlobalEtfTab').then(m => ({ default: m.GlobalEtfTab })));
 const PowerMapTab = lazy(() => import('./components/PowerMapTab').then(m => ({ default: m.PowerMapTab })));
 const BacktesterTab = lazy(() => import('./components/BacktesterTab').then(m => ({ default: m.BacktesterTab })));
 const IngestionTab = lazy(() => import('./components/IngestionTab').then(m => ({ default: m.IngestionTab })));
@@ -45,7 +46,7 @@ function parseRouteFromUrl(): { tab: TabType; ticker: string } {
   if (hash) {
     const [hashPath, hashQuery] = hash.split('?');
     if (hashPath) {
-      if (['opportunities', 'terminal', 'power_map', 'simulator', 'ingestion'].includes(hashPath)) {
+      if (['opportunities', 'terminal', 'global_etfs', 'power_map', 'simulator', 'ingestion'].includes(hashPath)) {
         tabParam = hashPath as TabType;
       } else if (/^[A-Za-z0-9]{4,5}$/.test(hashPath)) {
         tabParam = 'terminal';
@@ -211,13 +212,13 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {loading && !data && activeTab !== 'opportunities' && (
+        {loading && !data && activeTab !== 'opportunities' && activeTab !== 'global_etfs' && (
           <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>
             <p style={{ fontSize: '1.2rem' }}>Loading quantitative intelligence...</p>
           </div>
         )}
 
-        {(data || activeTab === 'opportunities') && (
+        {(data || activeTab === 'opportunities' || activeTab === 'global_etfs') && (
           <Suspense fallback={<TabFallback />}>
             {/* 1. Alpha Finder (Opportunities Hub) */}
             {activeTab === 'opportunities' && (
@@ -243,7 +244,12 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* 3. Tycoons & Power Map (Super-Insiders, Conglomerates, & UBO Graph) */}
+            {/* 3. Global ETFs & Pluang Radar */}
+            {activeTab === 'global_etfs' && (
+              <GlobalEtfTab />
+            )}
+
+            {/* 4. Tycoons & Power Map (Super-Insiders, Conglomerates, & UBO Graph) */}
             {activeTab === 'power_map' && data && (
               <PowerMapTab
                 companies={data.companies}

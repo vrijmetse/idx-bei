@@ -211,5 +211,22 @@ export async function triggerIngestion(params: {
   return await resp.json();
 }
 
+export async function fetchGlobalETFs(category?: string): Promise<{ etfs: any[]; total: number }> {
+  const url = category && category !== 'all' ? `/api/etfs?category=${encodeURIComponent(category)}` : '/api/etfs';
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error('Failed to fetch Global ETFs list');
+  }
+  return await resp.json();
+}
+
+export async function fetchGlobalETFDetail(ticker: string): Promise<any> {
+  const resp = await fetch(`/api/etf/${ticker.toUpperCase()}`);
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch ETF details for ${ticker}`);
+  }
+  return await resp.json();
+}
+
 
 
