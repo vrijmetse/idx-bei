@@ -558,6 +558,99 @@ async def get_stock_data(ticker: str, limit: int = 500):
 
     df = query_dataset("stock_summary", where=f"StockCode = '{ticker}'")
     if len(df) == 0:
+        from idx.core.etf import GLOBAL_ETF_UNIVERSE, fetch_live_etf_data
+        if ticker in GLOBAL_ETF_UNIVERSE:
+            import datetime
+            import yfinance as yf
+            etf_info = fetch_live_etf_data(ticker)
+            if not etf_info:
+                raise HTTPException(status_code=404, detail=f"ETF '{ticker}' data not available.")
+
+            try:
+                t = yf.Ticker(ticker)
+                h = t.history(period="1y", auto_adjust=False).reset_index()
+                if h.empty:
+                    raise ValueError("Empty history from yfinance")
+                h["Date"] = pd.to_datetime(h["Date"]).dt.tz_localize(None)
+                h["StockCode"] = ticker
+                h["OpenPrice"] = h["Open"]
+                h["Close"] = h["Close"]
+                h["High"] = h["High"]
+                h["Low"] = h["Low"]
+                h["Volume"] = h["Volume"]
+                tech = compute_technical_indicators(h, ticker=ticker)
+                if limit and limit > 0 and len(tech) > limit:
+                    tech = tech.tail(limit).reset_index(drop=True)
+
+                tech["time"] = tech["Date"].dt.strftime("%Y-%m-%d")
+                tech["open"] = tech["OpenPrice"].fillna(tech["Close"])
+                tech["high"] = tech["High"].fillna(tech["Close"])
+                tech["low"] = tech["Low"].fillna(tech["Close"])
+                tech["close"] = tech["Close"]
+                tech["volume"] = tech["Volume"].fillna(0)
+                clean_df = tech.replace([np.inf, -np.inf], np.nan).where(pd.notnull(tech), None)
+                clean_df["Date"] = clean_df["Date"].astype(str)
+                records = clean_dict_records(clean_df.to_dict(orient="records"))
+            except Exception as e:
+                logger.warning(f"Could not load yfinance candles for ETF {ticker}: {e}")
+                curr_p = etf_info.get("metrics", {}).get("current_price", 100.0)
+                today_s = datetime.date.today().isoformat()
+                records = [{
+                    "Date": today_s,
+                    "time": today_s,
+                    "StockCode": ticker,
+                    "open": curr_p,
+                    "high": curr_p,
+                    "low": curr_p,
+                    "close": curr_p,
+                    "Close": curr_p,
+                    "volume": 0,
+                    "RSI14": 50.0,
+                    "EMA20": curr_p,
+                    "EMA50": curr_p,
+                    "EMA200": curr_p,
+                    "TrendRegime": "NEUTRAL",
+                }]
+
+            latest = records[-1] if records else {}
+            profile = {
+                "name": etf_info.get("name", ticker),
+                "category": etf_info.get("category", "Global ETF"),
+                "issuer": etf_info.get("issuer", ""),
+                "description": etf_info.get("description", ""),
+                "sector": "US / Global ETF",
+                "conglomerate": etf_info.get("issuer", "Global ETF"),
+            }
+            financials = {
+                "dividend_yield_pct": etf_info.get("metrics", {}).get("gross_yield_pct", 0.0),
+                "net_yield_pct": etf_info.get("metrics", {}).get("net_after_tax_yield_pct", 0.0),
+                "return_1y_pct": etf_info.get("metrics", {}).get("total_return_1y", 0.0),
+                "return_3y_pct": etf_info.get("metrics", {}).get("total_return_3y", 0.0),
+                "pullback_52w_pct": etf_info.get("metrics", {}).get("pullback_52w_pct", 0.0),
+                "current_price": etf_info.get("metrics", {}).get("current_price", 0.0),
+            }
+            decision = {
+                "compounder_score": 85 if etf_info.get("nav_risk") == "PRIME_GROWTH" else (70 if etf_info.get("nav_risk") == "LOW_RISK_INCOME" else 30),
+                "dca_verdict": etf_info.get("verdict", {}).get("action", "BUY / DCA"),
+                "dca_rating": etf_info.get("verdict", {}).get("badge", "GLOBAL ETF"),
+                "badge": etf_info.get("verdict", {}).get("badge", "GLOBAL ETF"),
+                "nav_risk": etf_info.get("nav_risk", "DEFENSIVE"),
+                "takeaway": etf_info.get("verdict", {}).get("takeaway", ""),
+                "is_value_trap": etf_info.get("nav_risk") == "CRITICAL_TRAP",
+            }
+            out = {
+                "ticker": ticker,
+                "is_etf": True,
+                "currency": "USD",
+                "records": records,
+                "latest": latest,
+                "profile": profile,
+                "financials": financials,
+                "decision": decision,
+            }
+            set_in_cache(cache_key, out)
+            return out
+
         raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' not found.")
 
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
@@ -697,6 +790,23 @@ async def get_stock_blocks(ticker: str, time_range: str = Query("1D", alias="ran
 
     df = query_dataset("stock_summary", where=f"StockCode = '{ticker}'")
     if len(df) == 0:
+        from idx.core.etf import GLOBAL_ETF_UNIVERSE
+        if ticker in GLOBAL_ETF_UNIVERSE:
+            return {
+                "ticker": ticker,
+                "range": range_code,
+                "date": "N/A",
+                "sessions_count": 0,
+                "total_turnover_rp": 0.0,
+                "non_regular_value_rp": 0.0,
+                "non_regular_volume_shares": 0.0,
+                "non_regular_frequency": 0,
+                "net_foreign_flow_rp": 0.0,
+                "total_whale_value_rp": 0.0,
+                "smart_accumulation_ratio": 0.0,
+                "top_whale_dates": [],
+                "blocks": [],
+            }
         raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' not found.")
 
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")

@@ -61,7 +61,7 @@ function parseRouteFromUrl(): { tab: TabType; ticker: string } {
     }
   }
 
-  const validTabs: TabType[] = ['opportunities', 'terminal', 'power_map', 'simulator', 'ingestion'];
+  const validTabs: TabType[] = ['opportunities', 'terminal', 'global_etfs', 'power_map', 'simulator', 'ingestion'];
   const tab = tabParam && validTabs.includes(tabParam) ? tabParam : 'opportunities';
   const ticker = (tickerParam || 'BBCA').toUpperCase();
 
@@ -81,6 +81,8 @@ function syncRouteToUrl(tab: TabType, ticker: string, replace = false) {
     document.title = `${ticker.toUpperCase()} • IDX Smart Money Terminal`;
   } else if (tab === 'opportunities') {
     document.title = 'Alpha Finder • IDX Smart Money';
+  } else if (tab === 'global_etfs') {
+    document.title = 'Global ETFs & Pluang Radar • IDX Smart Money';
   } else if (tab === 'power_map') {
     document.title = 'Tycoons & Power Map • IDX Smart Money';
   } else if (tab === 'simulator') {
@@ -246,7 +248,7 @@ export const App: React.FC = () => {
 
             {/* 3. Global ETFs & Pluang Radar */}
             {activeTab === 'global_etfs' && (
-              <GlobalEtfTab />
+              <GlobalEtfTab onSelectStock={handleSelectStock} />
             )}
 
             {/* 4. Tycoons & Power Map (Super-Insiders, Conglomerates, & UBO Graph) */}

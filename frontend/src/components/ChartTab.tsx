@@ -132,6 +132,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
   }, [selectedTicker]);
 
   const company = companies.find((c) => c.code === activeTicker);
+  const [stockMeta, setStockMeta] = useState<any>(null);
 
   // Fetch real market data whenever activeTicker changes
   useEffect(() => {
@@ -142,6 +143,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
     fetchStockData(activeTicker, 1500)
       .then((data) => {
         if (!isCancelled) {
+          setStockMeta(data);
           if (data && data.records && data.records.length > 0) {
             setStockRecords(data.records);
             setLatestData(data.latest || data.records[data.records.length - 1]);
@@ -433,6 +435,7 @@ export const ChartTab: React.FC<ChartTabProps> = ({
   };
 
   // Real closing price and daily change
+  const isUsd = stockMeta?.is_etf || stockMeta?.currency === 'USD';
   const currentPrice = latestData?.close ?? latestData?.Close ?? company?.price ?? 0;
   const prevPrice = latestData?.Previous ?? latestData?.previous_price ?? company?.previous_price;
   const dailyChange = prevPrice && currentPrice ? currentPrice - prevPrice : latestData?.Change ?? company?.daily_change ?? 0;
@@ -529,7 +532,19 @@ export const ChartTab: React.FC<ChartTabProps> = ({
   const isHighCashflow = yieldVal >= 5.0 && !isTrapOrLoss && (roeVal >= 12.0 || company?.is_blue_chip);
   const isStrongAccumulation = netForeign > 0 && !isTrapOrLoss && (roeVal >= 15.0 || company?.is_blue_chip);
 
-  if (isTrapOrLoss) {
+  if (stockMeta?.is_etf && stockMeta?.decision) {
+    const isTrap = stockMeta.decision.is_value_trap;
+    actionVerdict = {
+      title: stockMeta.decision.badge || 'GLOBAL ETF • PLUANG',
+      badge: stockMeta.decision.dca_verdict || 'BUY / DCA',
+      bg: isTrap ? 'rgba(239, 68, 68, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+      border: isTrap ? '#ef4444' : '#38bdf8',
+      color: isTrap ? '#f87171' : '#38bdf8',
+      risk: isTrap ? 'Critical Risk (Capital Decay)' : 'Low to Moderate Risk',
+      riskColor: isTrap ? '#f87171' : '#38bdf8',
+      explanation: stockMeta.decision.takeaway || 'US Global ETF traded on Wall Street & Pluang.',
+    };
+  } else if (isTrapOrLoss) {
     actionVerdict = {
       title: 'FORENSIC ALERT • VALUE TRAP / LOSS',
       badge: 'AVOID / HIGH RISK',
@@ -680,15 +695,28 @@ export const ChartTab: React.FC<ChartTabProps> = ({
 
           <div style={{ display: 'flex', gap: '1rem', fontSize: '0.95rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 600, color: '#fff' }}>
-              {company?.name || `${activeTicker} Tbk`}
+              {stockMeta?.profile?.name || company?.name || (isUsd ? activeTicker : `${activeTicker} Tbk`)}
             </span>
+            {stockMeta?.is_etf && (
+              <span style={{
+                background: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                padding: '0.2rem 0.6rem',
+                borderRadius: '6px',
+                border: '1px solid rgba(56, 189, 248, 0.3)'
+              }}>
+                GLOBAL ETF (PLUANG)
+              </span>
+            )}
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
               <span style={{ color: dailyChange >= 0 ? 'var(--accent-green)' : 'var(--accent-red)', fontWeight: 700, fontFamily: 'monospace', fontSize: '1.25rem' }}>
-                Rp {Number(currentPrice).toLocaleString()}
+                {isUsd ? `$ ${Number(currentPrice).toFixed(2)}` : `Rp ${Number(currentPrice).toLocaleString()}`}
               </span>
               {prevPrice != null && (
                 <span style={{ fontSize: '0.8rem', fontWeight: 600, color: dailyChange >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                  {dailyChange >= 0 ? '+' : ''}{dailyChange.toLocaleString()} ({changePct.toFixed(2)}%)
+                  {dailyChange >= 0 ? '+' : ''}{isUsd ? `$${Number(dailyChange).toFixed(2)}` : dailyChange.toLocaleString()} ({changePct.toFixed(2)}%)
                 </span>
               )}
             </div>
@@ -1020,97 +1048,152 @@ export const ChartTab: React.FC<ChartTabProps> = ({
 
       {/* Real Technical Summary, Foreign Flow, & Closing Order Book Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
-        {/* Card 1: Antrean Beli vs Jual (Order Book) */}
+        {/* Card 1: Antrean Beli vs Jual (Order Book) / Profil ETF */}
         <div className="glass-card">
           <h3 style={{ fontSize: '1.1rem', marginBottom: '0.85rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Scale size={18} style={{ color: 'var(--accent-blue)' }} /> Antrean Beli vs Jual (Order Book)
+            <Scale size={18} style={{ color: 'var(--accent-blue)' }} /> {stockMeta?.is_etf ? 'Struktur Produk & Pajak AS' : 'Antrean Beli vs Jual (Order Book)'}
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-              <div>
-                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.75rem' }}>Antrean Beli (Bid)</span>
-                <strong style={{ color: 'var(--accent-green)', fontSize: '1.15rem', fontFamily: 'monospace' }}>
-                  {bidPrice > 0 ? `Rp ${bidPrice.toLocaleString()}` : '-'}
-                </strong>
-                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '2px' }}>
-                  {bidLots.toLocaleString()} Lot ({bidPct}%)
+          {stockMeta?.is_etf ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Bursa & Listing:</span>
+                  <strong style={{ color: '#fff' }}>US Market (NASDAQ / NYSE)</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Aplikasi Partner:</span>
+                  <strong style={{ color: '#38bdf8' }}>Pluang (Kustodian DriveWealth LLC)</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Pajak Dividen (W-8BEN):</span>
+                  <strong style={{ color: '#f59e0b' }}>15% (Dipotong otomatis di AS)</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Pajak Capital Gain AS:</span>
+                  <strong style={{ color: 'var(--accent-green)' }}>0% (Bebas pajak di AS bagi WNI)</strong>
                 </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.75rem' }}>Antrean Jual (Offer)</span>
-                <strong style={{ color: 'var(--accent-red)', fontSize: '1.15rem', fontFamily: 'monospace' }}>
-                  {offerPrice > 0 ? `Rp ${offerPrice.toLocaleString()}` : '-'}
-                </strong>
-                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '2px' }}>
-                  {offerLots.toLocaleString()} Lot ({offerPct}%)
-                </div>
+              <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(56, 189, 248, 0.05)', borderRadius: '6px', border: '1px solid rgba(56, 189, 248, 0.2)', color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: 1.5 }}>
+                💡 <strong>Catatan Likuiditas:</strong> Pasar saham AS beroperasi dengan sistem Authorized Participants (AP) dan Market Maker yang menjamin likuiditas mendekati Net Asset Value (NAV) secara real-time.
               </div>
             </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <div>
+                  <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.75rem' }}>Antrean Beli (Bid)</span>
+                  <strong style={{ color: 'var(--accent-green)', fontSize: '1.15rem', fontFamily: 'monospace' }}>
+                    {bidPrice > 0 ? `Rp ${bidPrice.toLocaleString()}` : '-'}
+                  </strong>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '2px' }}>
+                    {bidLots.toLocaleString()} Lot ({bidPct}%)
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.75rem' }}>Antrean Jual (Offer)</span>
+                  <strong style={{ color: 'var(--accent-red)', fontSize: '1.15rem', fontFamily: 'monospace' }}>
+                    {offerPrice > 0 ? `Rp ${offerPrice.toLocaleString()}` : '-'}
+                  </strong>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '2px' }}>
+                    {offerLots.toLocaleString()} Lot ({offerPct}%)
+                  </div>
+                </div>
+              </div>
 
-            {/* Thickness Comparison Progress Bar */}
-            <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden', display: 'flex' }}>
-              <div style={{ width: `${bidPct}%`, background: 'var(--accent-green)', transition: 'width 0.3s ease' }} />
-              <div style={{ width: `${offerPct}%`, background: 'var(--accent-red)', transition: 'width 0.3s ease' }} />
-            </div>
+              {/* Thickness Comparison Progress Bar */}
+              <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden', display: 'flex' }}>
+                <div style={{ width: `${bidPct}%`, background: 'var(--accent-green)', transition: 'width 0.3s ease' }} />
+                <div style={{ width: `${offerPct}%`, background: 'var(--accent-red)', transition: 'width 0.3s ease' }} />
+              </div>
 
-            {/* Beginner-friendly explanation */}
-            <div style={{
-              marginTop: '0.25rem',
-              padding: '0.55rem 0.75rem',
-              background: 'rgba(255,255,255,0.02)',
-              borderRadius: '6px',
-              borderLeft: `3px solid ${bidLots > offerLots ? 'var(--accent-green)' : offerLots > bidLots ? 'var(--accent-red)' : 'var(--text-secondary)'}`,
-              fontSize: '0.8rem',
-              lineHeight: 1.4,
-              color: 'var(--text-secondary)'
-            }}>
-              {bidLots > offerLots ? (
-                <span>
-                  <strong style={{ color: '#fff' }}>Antrean Beli {queueRatio}x lebih tebal.</strong> Pembeli dominan menahan harga di Rp {bidPrice.toLocaleString()}.
-                </span>
-              ) : offerLots > bidLots ? (
-                <span>
-                  <strong style={{ color: '#fff' }}>Antrean Jual {queueRatio}x lebih tebal.</strong> Penjual membendung kenaikan di Rp {offerPrice.toLocaleString()}.
-                </span>
-              ) : (
-                <span>Kekuatan antrean beli dan jual seimbang di penutupan.</span>
-              )}
+              {/* Beginner-friendly explanation */}
+              <div style={{
+                marginTop: '0.25rem',
+                padding: '0.55rem 0.75rem',
+                background: 'rgba(255,255,255,0.02)',
+                borderRadius: '6px',
+                borderLeft: `3px solid ${bidLots > offerLots ? 'var(--accent-green)' : offerLots > bidLots ? 'var(--accent-red)' : 'var(--text-secondary)'}`,
+                fontSize: '0.8rem',
+                lineHeight: 1.4,
+                color: 'var(--text-secondary)'
+              }}>
+                {bidLots > offerLots ? (
+                  <span>
+                    <strong style={{ color: '#fff' }}>Antrean Beli {queueRatio}x lebih tebal.</strong> Pembeli dominan menahan harga di Rp {bidPrice.toLocaleString()}.
+                  </span>
+                ) : offerLots > bidLots ? (
+                  <span>
+                    <strong style={{ color: '#fff' }}>Antrean Jual {queueRatio}x lebih tebal.</strong> Penjual membendung kenaikan di Rp {offerPrice.toLocaleString()}.
+                  </span>
+                ) : (
+                  <span>Kekuatan antrean beli dan jual seimbang di penutupan.</span>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Card 2: Foreign Flow Footprint */}
+        {/* Card 2: Foreign Flow Footprint / Metrik Kinerja ETF */}
         <div className="glass-card">
           <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Building size={18} style={{ color: 'var(--accent-purple)' }} /> Institutional Foreign Flow Footprint
+            <Building size={18} style={{ color: 'var(--accent-purple)' }} /> {stockMeta?.is_etf ? 'Metrik Return & Dividen Global' : 'Institutional Foreign Flow Footprint'}
           </h3>
-          <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-            <div>
-              <strong style={{ color: '#fff' }}>Foreign Buy:</strong>{' '}
-              <span className="numeric" style={{ color: 'var(--accent-green)' }}>
-                {(foreignBuy / 1000000).toFixed(2)}M shares
-              </span>
+          {stockMeta?.is_etf ? (
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong style={{ color: '#fff' }}>1-Yr Return:</strong>
+                <span style={{ fontWeight: 700, color: (stockMeta.financials?.return_1y_pct ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                  {(stockMeta.financials?.return_1y_pct ?? 0) >= 0 ? '+' : ''}{Number(stockMeta.financials?.return_1y_pct ?? 0).toFixed(1)}%
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong style={{ color: '#fff' }}>3-Yr Return:</strong>
+                <span style={{ fontWeight: 700, color: (stockMeta.financials?.return_3y_pct ?? 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                  {(stockMeta.financials?.return_3y_pct ?? 0) >= 0 ? '+' : ''}{Number(stockMeta.financials?.return_3y_pct ?? 0).toFixed(1)}%
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong style={{ color: '#fff' }}>Diskon dari Puncak (ATH):</strong>
+                <span style={{ fontWeight: 700, color: '#38bdf8' }}>
+                  {Number(stockMeta.financials?.pullback_52w_pct ?? 0).toFixed(1)}%
+                </span>
+              </div>
+              <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between' }}>
+                <strong style={{ color: '#fff' }}>Net Dividen (Setelah Pajak 15%):</strong>
+                <span style={{ fontWeight: 700, fontSize: '1.05rem', color: (stockMeta.financials?.net_yield_pct ?? 0) > 8 ? 'var(--accent-green)' : '#fff' }}>
+                  {Number(stockMeta.financials?.net_yield_pct ?? 0).toFixed(1)}% / thn
+                </span>
+              </div>
             </div>
-            <div>
-              <strong style={{ color: '#fff' }}>Foreign Sell:</strong>{' '}
-              <span className="numeric" style={{ color: 'var(--accent-red)' }}>
-                {(foreignSell / 1000000).toFixed(2)}M shares
-              </span>
+          ) : (
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              <div>
+                <strong style={{ color: '#fff' }}>Foreign Buy:</strong>{' '}
+                <span className="numeric" style={{ color: 'var(--accent-green)' }}>
+                  {(foreignBuy / 1000000).toFixed(2)}M shares
+                </span>
+              </div>
+              <div>
+                <strong style={{ color: '#fff' }}>Foreign Sell:</strong>{' '}
+                <span className="numeric" style={{ color: 'var(--accent-red)' }}>
+                  {(foreignSell / 1000000).toFixed(2)}M shares
+                </span>
+              </div>
+              <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                <strong style={{ color: '#fff' }}>Net Foreign Flow:</strong>{' '}
+                <span
+                  className="numeric"
+                  style={{
+                    fontWeight: 700,
+                    fontSize: '1.05rem',
+                    color: netForeign >= 0 ? 'var(--accent-green)' : 'var(--accent-red)',
+                  }}
+                >
+                  {netForeign >= 0 ? '+' : ''}{(netForeign / 1000000).toFixed(2)}M shares ({netForeign >= 0 ? 'Accumulation' : 'Distribution'})
+                </span>
+              </div>
             </div>
-            <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-              <strong style={{ color: '#fff' }}>Net Foreign Flow:</strong>{' '}
-              <span
-                className="numeric"
-                style={{
-                  fontWeight: 700,
-                  fontSize: '1.05rem',
-                  color: netForeign >= 0 ? 'var(--accent-green)' : 'var(--accent-red)',
-                }}
-              >
-                {netForeign >= 0 ? '+' : ''}{(netForeign / 1000000).toFixed(2)}M shares ({netForeign >= 0 ? 'Accumulation' : 'Distribution'})
-              </span>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Card 3: Real Vectorized Technical Indicators */}

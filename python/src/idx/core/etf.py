@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 import logging
 from typing import Any, Dict, List, Optional
+import pandas as pd
 import yfinance as yf
 
 log = logging.getLogger(__name__)
@@ -256,7 +257,7 @@ def fetch_live_etf_data(ticker: str) -> Optional[Dict[str, Any]]:
         low_52w = float(h_all.tail(252)["Low"].min())
 
         # 1-year price change
-        h_1y = h_all.loc[h_all.index >= (h_all.index[-1] - yf.pandas.Timedelta(days=365))]
+        h_1y = h_all.loc[h_all.index >= (h_all.index[-1] - pd.Timedelta(days=365))]
         price_1y_start = float(h_1y.iloc[0]["Close"]) if len(h_1y) > 0 else curr_price
         price_ret_1y = ((curr_price - price_1y_start) / price_1y_start) * 100
 

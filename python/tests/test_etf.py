@@ -132,6 +132,27 @@ class TestGlobalETFRadar(unittest.TestCase):
         resp_invalid = self.client.get("/api/etf/XYZUNKNOWN")
         self.assertEqual(resp_invalid.status_code, 404)
 
+    def test_stock_endpoint_supports_global_etfs(self):
+        """Test unified /api/stock/{ticker} and blocks endpoint support global ETFs like SMH."""
+        resp = self.client.get("/api/stock/SMH")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["ticker"], "SMH")
+        self.assertTrue(data.get("is_etf", False))
+        self.assertEqual(data.get("currency"), "USD")
+        self.assertIn("records", data)
+        self.assertGreater(len(data["records"]), 0)
+        self.assertIn("latest", data)
+        self.assertIn("profile", data)
+        self.assertIn("VanEck", data["profile"]["name"])
+
+        # Blocks endpoint returns graceful empty response for ETFs without 404
+        resp_blocks = self.client.get("/api/stock/SMH/blocks")
+        self.assertEqual(resp_blocks.status_code, 200)
+        data_blocks = resp_blocks.json()
+        self.assertEqual(data_blocks["ticker"], "SMH")
+        self.assertEqual(data_blocks["blocks"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
